@@ -3,7 +3,6 @@ import { envSchema, runtimeConfigSchema, configSchema } from './schema';
 
 /**
  * Configuration types for Mattermost plugin
- * Following ElizaOS patterns for type safety
  */
 
 // Base configuration types derived from schemas
