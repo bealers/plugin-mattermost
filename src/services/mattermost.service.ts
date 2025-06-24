@@ -1,13 +1,12 @@
-import { Service, IAgentRuntime, elizaLogger } from '@elizaos/core';
+import { Service } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { 
     loadConfig, 
-    getConfig, 
     isConfigLoaded,
-    getMattermostToken,
     getSafeConfigForLogging,
-    MattermostConfig,
-    createSafeLogger
+    type MattermostConfig 
 } from '../config';
+import { createSafeLogger } from '../config/credentials';
 
 /**
  * Mattermost Service Implementation

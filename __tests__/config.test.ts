@@ -1,12 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  loadConfig,
-  getConfig,
-  isConfigLoaded,
   resetConfig,
-  getMattermostToken,
-  hasRequiredCredentials,
-  getSafeConfigForLogging
+  isConfigLoaded
 } from '../src/config';
 import { 
   credentialManager, 
