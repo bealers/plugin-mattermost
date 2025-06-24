@@ -92,15 +92,24 @@ class ConfigManager {
       return envSchema.parse(envVars);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        // Create safe error message without exposing sensitive values
-        const safeErrors = error.errors
-          .map(err => {
-            const field = err.path.join('.');
-            // Don't include actual values in error messages for sensitive fields
-            return `${field}: ${err.message}`;
-          })
-          .join(', ');
-        throw new Error(`Environment validation failed: ${safeErrors}`);
+        // Create actionable error messages for common issues
+        const errorMessages = error.errors.map(err => {
+          const field = err.path.join('.');
+          let message = `${field}: ${err.message}`;
+          
+          // Add helpful context for common fields
+          if (field === 'MATTERMOST_TOKEN') {
+            message += '\n  → Get this from your Mattermost System Console → Integrations → Bot Accounts';
+          } else if (field === 'MATTERMOST_SERVER_URL') {
+            message += '\n  → Example: https://chat.example.com (include https://)';
+          }
+          
+          return message;
+        });
+        
+        const helpText = '\n\n💡 Quick fix: Create a .env file with:\nMATTERMOST_SERVER_URL=https://your-server.com\nMATTERMOST_TOKEN=your-bot-token';
+        
+        throw new Error(`Configuration Error:\n${errorMessages.join('\n')}${helpText}`);
       }
       throw error;
     }

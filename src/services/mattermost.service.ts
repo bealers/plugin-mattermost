@@ -52,7 +52,19 @@ export class MattermostService extends Service {
             
             return service;
         } catch (error) {
-            safeLogger.error('Failed to start Mattermost service', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown configuration error';
+            safeLogger.error('Failed to start Mattermost service');
+            
+            // Provide helpful guidance for common issues
+            if (errorMessage.includes('MATTERMOST_TOKEN')) {
+                safeLogger.error('💡 Check your bot token is set correctly in .env file');
+            } else if (errorMessage.includes('MATTERMOST_SERVER_URL')) {
+                safeLogger.error('💡 Verify your server URL includes https:// and is accessible');
+            } else if (errorMessage.includes('Configuration Error')) {
+                // Configuration error already has helpful details, just pass it through
+                safeLogger.error(errorMessage);
+            }
+            
             throw error;
         }
     }
