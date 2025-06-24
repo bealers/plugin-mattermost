@@ -145,7 +145,7 @@ export class WebSocketClient {
     }
     
     // Clear event listeners
-    this.eventListeners.clear();
+    this.removeAllListeners();
     
     this.logger.info('WebSocket client disconnected');
   }
@@ -159,21 +159,86 @@ export class WebSocketClient {
 
   /**
    * Register an event listener
+   * @param event - Event name or '*' for all events
+   * @param callback - Function to call when event is emitted
    */
   on(event: string, callback: (data: any) => void): void {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set());
     }
     this.eventListeners.get(event)!.add(callback);
+    
+    this.logger.debug(`Registered listener for event: ${event}`, {
+      event,
+      totalListeners: this.eventListeners.get(event)!.size
+    });
   }
 
   /**
    * Remove an event listener
+   * @param event - Event name to remove listener from
+   * @param callback - Specific callback to remove
    */
   off(event: string, callback: (data: any) => void): void {
     if (this.eventListeners.has(event)) {
-      this.eventListeners.get(event)!.delete(callback);
+      const listeners = this.eventListeners.get(event)!;
+      listeners.delete(callback);
+      
+      // Clean up empty listener sets
+      if (listeners.size === 0) {
+        this.eventListeners.delete(event);
+      }
+      
+      this.logger.debug(`Removed listener for event: ${event}`, {
+        event,
+        remainingListeners: listeners.size
+      });
     }
+  }
+
+  /**
+   * Register a one-time event listener that automatically removes itself after first emission
+   * @param event - Event name to listen for
+   * @param callback - Function to call when event is emitted
+   */
+  once(event: string, callback: (data: any) => void): void {
+    const onceCallback = (data: any) => {
+      this.off(event, onceCallback);
+      callback(data);
+    };
+    this.on(event, onceCallback);
+  }
+
+  /**
+   * Remove all listeners for a specific event, or all listeners if no event specified
+   * @param event - Optional event name. If omitted, removes all listeners
+   */
+  removeAllListeners(event?: string): void {
+    if (event) {
+      this.eventListeners.delete(event);
+      this.logger.debug(`Removed all listeners for event: ${event}`);
+    } else {
+      const totalEvents = this.eventListeners.size;
+      this.eventListeners.clear();
+      this.logger.debug(`Removed all event listeners`, { totalEvents });
+    }
+  }
+
+  /**
+   * Get the number of listeners for a specific event
+   * @param event - Event name to check
+   * @returns Number of listeners registered for the event
+   */
+  listenerCount(event: string): number {
+    return this.eventListeners.has(event) ? this.eventListeners.get(event)!.size : 0;
+  }
+
+  /**
+   * Get all registered event names
+   * @returns Array of event names that have listeners
+   */
+  eventNames(): string[] {
+    return Array.from(this.eventListeners.keys());
   }
 
   /**
@@ -211,15 +276,16 @@ export class WebSocketClient {
       if (message.event === 'hello') {
         this.isAuthenticated = true;
         this.logger.info('WebSocket authenticated successfully');
-        this.emitEvent('authenticated', message.data);
+        this.emitEvent('authenticated', message.data, { originalMessage: message });
         return;
       }
       
-      // Emit event to specific listeners
-      this.emitEvent(message.event, message.data);
-      
-      // Emit to wildcard listeners
-      this.emitEvent('*', message);
+      // Emit event with full message context
+      this.emitEvent(message.event, message.data, { 
+        originalMessage: message,
+        broadcast: message.broadcast,
+        seq: message.seq 
+      });
       
     } catch (error) {
       this.logger.error(`Error handling WebSocket message: ${error.message}`, {
@@ -260,18 +326,79 @@ export class WebSocketClient {
 
   /**
    * Emit an event to all registered listeners
+   * @param event - Event name to emit
+   * @param data - Data to pass to listeners
+   * @param metadata - Optional metadata about the event
    */
-  private emitEvent(event: string, data: any): void {
+  private emitEvent(event: string, data: any, metadata?: any): void {
+    const eventInfo = {
+      event,
+      data,
+      metadata,
+      timestamp: Date.now()
+    };
+
+    // Track emission for debugging
+    this.logger.debug(`Emitting event: ${event}`, {
+      event,
+      listenerCount: this.listenerCount(event),
+      wildcardListenerCount: this.listenerCount('*'),
+      hasData: !!data
+    });
+
+    // Emit to specific event listeners
+    this._emitToListeners(event, eventInfo);
+    
+    // Emit to wildcard listeners (unless this is already a wildcard emission)
+    if (event !== '*') {
+      this._emitToListeners('*', eventInfo);
+    }
+  }
+
+  /**
+   * Internal method to emit to a specific set of listeners
+   * @param event - Event name
+   * @param eventInfo - Complete event information
+   */
+  private _emitToListeners(event: string, eventInfo: any): void {
     if (this.eventListeners.has(event)) {
       const listeners = this.eventListeners.get(event)!;
+      let successCount = 0;
+      let errorCount = 0;
+
       for (const listener of listeners) {
         try {
-          listener(data);
+          listener(eventInfo.data, eventInfo);
+          successCount++;
         } catch (error) {
-          this.logger.error(`Error in event listener for ${event}: ${error.message}`);
+          errorCount++;
+          this.logger.error(`Error in event listener for ${event}: ${error.message}`, {
+            event,
+            error: error.message,
+            listenerIndex: successCount + errorCount
+          });
         }
       }
+
+      if (errorCount > 0) {
+        this.logger.warn(`Event emission completed with errors`, {
+          event,
+          successCount,
+          errorCount,
+          totalListeners: listeners.size
+        });
+      }
     }
+  }
+
+  /**
+   * Emit a custom event (for external use)
+   * @param event - Event name
+   * @param data - Data to emit
+   * @param metadata - Optional metadata
+   */
+  emit(event: string, data: any, metadata?: any): void {
+    this.emitEvent(event, data, metadata);
   }
 
   /**

@@ -5,8 +5,6 @@ import type { MattermostConfig } from '../config';
 import { createSafeLogger } from '../config/credentials';
 import { getMattermostToken } from '../config';
 
-const { Client4 } = MattermostClient;
-
 // ============================================================================
 // RETRY AND RATE LIMITING UTILITIES
 // ============================================================================

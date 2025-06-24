@@ -78,7 +78,8 @@
     "format:check": "prettier --check ./src",
     "type-check": "tsc --noEmit",
     "bot:start": "elizaos dev --character hiro.character.json",
-    "test:websocket": "tsx scripts/test-websocket.ts"
+    "test:websocket": "tsx scripts/test-websocket.ts",
+    "test:websocket-events": "tsx scripts/test-websocket-events.ts"
   },
   "publishConfig": {
     "access": "public"
