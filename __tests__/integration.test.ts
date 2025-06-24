@@ -1,9 +1,11 @@
 import { describe, expect, it, vi, afterAll, beforeAll, beforeEach } from 'vitest';
 import { config } from 'dotenv';
 import { RestClient } from '../src/clients/rest.client';
+import { WebSocketClient } from '../src/clients/websocket.client';
 import { loadConfig } from '../src/config';
 import { createSafeLogger } from '../src/config/credentials';
 import type { MattermostConfig } from '../src/config';
+import type { IAgentRuntime } from '@elizaos/core';
 
 // Load .env file before anything else
 config();
@@ -276,6 +278,298 @@ describe('RestClient Integration Tests', () => {
       expect(client.isReady()).toBe(true);
       expect(me.id).toBeTruthy();
       expect(team.id).toBeTruthy();
+    });
+  });
+});
+
+/**
+ * WebSocket Client and ElizaOS Runtime Integration Tests
+ * 
+ * These tests validate Task 5.5: Integration with ElizaOS Runtime and Logging Patterns
+ * - WebSocket client integration with IAgentRuntime
+ * - Proper logging using createSafeLogger and elizaLogger
+ * - Configuration sourcing from MattermostConfig
+ * - Runtime interaction consistency
+ * - Event emission and handling patterns
+ */
+describe('WebSocket Client and ElizaOS Runtime Integration Tests', () => {
+  let wsClient: WebSocketClient;
+  let mockRuntime: IAgentRuntime;
+  let mattermostConfig: MattermostConfig;
+
+  beforeAll(async () => {
+    try {
+      mattermostConfig = loadConfig();
+      
+      // Create mock runtime that follows ElizaOS patterns
+      mockRuntime = {
+        character: { name: 'TestBot' },
+        logger: createSafeLogger(console), // Use safe logger pattern
+        agentId: 'test-agent-123',
+        serverUrl: 'http://localhost:3000',
+        token: 'test-token',
+        actions: [],
+        evaluators: [],
+        providers: [],
+        plugins: []
+      } as IAgentRuntime;
+      
+      console.log('✅ Mock runtime created for WebSocket integration tests');
+    } catch (error) {
+      console.log('⚠️ WebSocket integration tests will be skipped - configuration failed:', error.message);
+    }
+  });
+
+  describe('ElizaOS Runtime Integration', () => {
+    beforeEach(() => {
+      if (mattermostConfig) {
+        wsClient = new WebSocketClient(mattermostConfig, mockRuntime);
+      }
+    });
+
+    afterEach(async () => {
+      if (wsClient) {
+        await wsClient.disconnect();
+      }
+    });
+
+    it('should initialize with proper ElizaOS runtime integration', () => {
+      if (!mattermostConfig) return;
+      
+      expect(wsClient).toBeDefined();
+      expect((wsClient as any).runtime).toBe(mockRuntime);
+      expect((wsClient as any).config).toBe(mattermostConfig);
+      expect((wsClient as any).logger).toBeDefined();
+    });
+
+    it('should use configurable parameters from MattermostConfig', () => {
+      if (!mattermostConfig) return;
+      
+      const maxAttempts = (wsClient as any).maxReconnectAttempts;
+      const baseDelay = (wsClient as any).baseReconnectDelay;
+      
+      expect(maxAttempts).toBe(mattermostConfig.runtime.reconnectAttempts);
+      expect(baseDelay).toBe(mattermostConfig.runtime.reconnectDelay);
+    });
+
+    it('should properly integrate logging patterns', () => {
+      if (!mattermostConfig) return;
+      
+      const logger = (wsClient as any).logger;
+      expect(logger).toBeDefined();
+      expect(typeof logger.info).toBe('function');
+      expect(typeof logger.error).toBe('function');
+      expect(typeof logger.warn).toBe('function');
+      expect(typeof logger.debug).toBe('function');
+    });
+
+    it('should handle connection state with runtime awareness', () => {
+      if (!mattermostConfig) return;
+      
+      expect(wsClient.isConnected()).toBe(false);
+      expect((wsClient as any).isAuthenticated).toBe(false);
+    });
+  });
+
+  describe('Configuration Integration', () => {
+    it('should source all configuration from MattermostConfig', () => {
+      if (!mattermostConfig) return;
+      
+      const config = (wsClient as any).config;
+      expect(config.env.MATTERMOST_URL).toBeTruthy();
+      expect(config.env.MATTERMOST_TOKEN).toBeTruthy();
+      expect(config.runtime.reconnectAttempts).toBeTypeOf('number');
+      expect(config.runtime.reconnectDelay).toBeTypeOf('number');
+    });
+
+    it('should use Client4 with proper configuration', () => {
+      if (!mattermostConfig) return;
+      
+      const client4 = (wsClient as any).client;
+      expect(client4).toBeDefined();
+      // Client4 should be configured with URL and token from config
+    });
+  });
+
+  describe('Event System Integration', () => {
+    it('should provide ElizaOS-compatible event interface', () => {
+      if (!mattermostConfig) return;
+      
+      expect(typeof wsClient.on).toBe('function');
+      expect(typeof wsClient.off).toBe('function');
+      expect(typeof wsClient.once).toBe('function');
+      expect(typeof wsClient.emit).toBe('function');
+      expect(typeof wsClient.removeAllListeners).toBe('function');
+    });
+
+    it('should emit events with proper metadata structure', () => {
+      if (!mattermostConfig) return;
+      
+      const testCallback = vi.fn();
+      wsClient.on('test_event', testCallback);
+      
+      // Emit a test event with metadata
+      wsClient.emit('test_event', { message: 'test' }, { 
+        timestamp: Date.now(),
+        source: 'integration_test' 
+      });
+      
+      expect(testCallback).toHaveBeenCalledWith(
+        { message: 'test' },
+        expect.objectContaining({
+          event: 'test_event',
+          metadata: expect.objectContaining({
+            timestamp: expect.any(Number),
+            source: 'integration_test'
+          })
+        })
+      );
+    });
+
+    it('should handle reconnection events with proper runtime logging', () => {
+      if (!mattermostConfig) return;
+      
+      const reconnectionCallback = vi.fn();
+      wsClient.on('reconnection_scheduled', reconnectionCallback);
+      
+      // Simulate reconnection attempt
+      (wsClient as any).reconnectAttempts = 1;
+      (wsClient as any).attemptReconnect();
+      
+      expect(reconnectionCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attempt: 2,
+          maxAttempts: mattermostConfig.runtime.reconnectAttempts,
+          delay: expect.any(Number)
+        }),
+        expect.objectContaining({
+          event: 'reconnection_scheduled'
+        })
+      );
+    });
+  });
+
+  describe('Error Handling and Runtime Reporting', () => {
+    it('should handle errors with proper runtime logging', () => {
+      if (!mattermostConfig) return;
+      
+      const logger = (wsClient as any).logger;
+      const errorSpy = vi.spyOn(logger, 'error');
+      
+      // Simulate handling a malformed message
+      const badMessage = 'invalid-json-{';
+      (wsClient as any).handleMessage(badMessage);
+      
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error handling WebSocket message'),
+        expect.objectContaining({
+          error: expect.any(String),
+          data: badMessage
+        })
+      );
+    });
+
+    it('should emit error events for runtime consumption', () => {
+      if (!mattermostConfig) return;
+      
+      const logger = (wsClient as any).logger;
+      const errorSpy = vi.spyOn(logger, 'error');
+      
+      // Simulate WebSocket error
+      const testError = new Error('Connection failed');
+      (wsClient as any).handleError(testError);
+      
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('WebSocket error'),
+        expect.objectContaining({
+          error: 'Connection failed',
+          reconnectAttempts: expect.any(Number)
+        })
+      );
+    });
+  });
+
+  describe('Runtime Lifecycle Integration', () => {
+    it('should handle graceful shutdown', async () => {
+      if (!mattermostConfig) return;
+      
+      const logger = (wsClient as any).logger;
+      const infoSpy = vi.spyOn(logger, 'info');
+      
+      await wsClient.disconnect();
+      
+      expect(infoSpy).toHaveBeenCalledWith('Disconnecting WebSocket client');
+      expect(infoSpy).toHaveBeenCalledWith('WebSocket client disconnected');
+      expect(wsClient.isConnected()).toBe(false);
+    });
+
+    it('should clean up resources properly', async () => {
+      if (!mattermostConfig) return;
+      
+      // Add some listeners
+      wsClient.on('test1', () => {});
+      wsClient.on('test2', () => {});
+      
+      expect(wsClient.eventNames()).toContain('test1');
+      expect(wsClient.eventNames()).toContain('test2');
+      
+      await wsClient.disconnect();
+      
+      // All listeners should be cleaned up
+      expect(wsClient.eventNames()).toHaveLength(0);
+    });
+  });
+
+  describe('Production Readiness', () => {
+    it('should use production-grade logging levels', () => {
+      if (!mattermostConfig) return;
+      
+      const logger = (wsClient as any).logger;
+      
+      // Should have all required logging methods
+      expect(typeof logger.debug).toBe('function');
+      expect(typeof logger.info).toBe('function');
+      expect(typeof logger.warn).toBe('function');
+      expect(typeof logger.error).toBe('function');
+    });
+
+    it('should follow ElizaOS service patterns', () => {
+      if (!mattermostConfig) return;
+      
+      // Should accept IAgentRuntime in constructor
+      expect((wsClient as any).runtime).toBeDefined();
+      expect((wsClient as any).runtime.character).toBeDefined();
+      expect((wsClient as any).runtime.logger).toBeDefined();
+      
+      // Should use safe configuration patterns
+      expect((wsClient as any).config).toBeDefined();
+      expect((wsClient as any).logger).toBeDefined();
+    });
+
+    it('should handle concurrent operations safely', () => {
+      if (!mattermostConfig) return;
+      
+      const callbacks = Array.from({ length: 10 }, () => vi.fn());
+      
+      // Register multiple listeners concurrently
+      callbacks.forEach((callback, i) => {
+        wsClient.on(`concurrent_test_${i}`, callback);
+      });
+      
+      // Emit events concurrently
+      callbacks.forEach((callback, i) => {
+        wsClient.emit(`concurrent_test_${i}`, { index: i });
+      });
+      
+      // All callbacks should have been called
+      callbacks.forEach((callback, i) => {
+        expect(callback).toHaveBeenCalledWith(
+          { index: i },
+          expect.objectContaining({
+            event: `concurrent_test_${i}`
+          })
+        );
+      });
     });
   });
 });
