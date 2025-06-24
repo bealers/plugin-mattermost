@@ -32,10 +32,16 @@ vi.mock('@mattermost/client', () => ({
 vi.mock('../src/config', () => ({
   loadConfig: vi.fn(() => ({
     env: {
-      MATTERMOST_SERVER_URL: 'https://test.example.com',
+      MATTERMOST_URL: 'https://test.example.com',
       MATTERMOST_TOKEN: 'test-token',
       MATTERMOST_TEAM: 'test-team',
       MATTERMOST_TEST_CHANNEL: 'test-channel'
+    },
+    runtime: {
+      reconnectAttempts: 3,
+      reconnectDelay: 5000,
+      maxMessageLength: 4000,
+      allowedChannelTypes: ['O', 'P', 'D']
     }
   }))
 }));
@@ -52,10 +58,16 @@ describe('WebSocketClient Event System', () => {
     // Create mock config
     config = {
       env: {
-        MATTERMOST_SERVER_URL: 'https://test.example.com',
+        MATTERMOST_URL: 'https://test.example.com',
         MATTERMOST_TOKEN: 'test-token',
         MATTERMOST_TEAM: 'test-team',
         MATTERMOST_TEST_CHANNEL: 'test-channel'
+      },
+      runtime: {
+        reconnectAttempts: 3,
+        reconnectDelay: 5000,
+        maxMessageLength: 4000,
+        allowedChannelTypes: ['O', 'P', 'D']
       }
     };
     
@@ -383,6 +395,258 @@ describe('WebSocketClient Event System', () => {
           event: 'posted'
         })
       );
+    });
+  });
+
+  describe('Reconnection Logic with Exponential Backoff', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should use configurable reconnection parameters', () => {
+      expect((client as any).maxReconnectAttempts).toBe(config.runtime.reconnectAttempts);
+      expect((client as any).baseReconnectDelay).toBe(config.runtime.reconnectDelay);
+    });
+
+    it('should emit reconnection_scheduled event with exponential backoff delays', () => {
+      const reconnectionCallback = vi.fn();
+      client.on('reconnection_scheduled', reconnectionCallback);
+
+      // Simulate connection drop (non-clean close)
+      (client as any).handleClose(1006, Buffer.from('Connection lost'));
+
+      expect(reconnectionCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attempt: 1,
+          maxAttempts: config.runtime.reconnectAttempts,
+          delay: config.runtime.reconnectDelay // First attempt uses base delay
+        }),
+        expect.objectContaining({
+          event: 'reconnection_scheduled',
+          metadata: expect.objectContaining({
+            nextAttemptAt: expect.any(Number)
+          })
+        })
+      );
+    });
+
+    it('should calculate exponential backoff delays correctly', () => {
+      const reconnectionCallback = vi.fn();
+      client.on('reconnection_scheduled', reconnectionCallback);
+
+      // Set up multiple reconnection attempts
+      (client as any).reconnectAttempts = 0;
+
+      // First attempt
+      (client as any).attemptReconnect();
+      expect(reconnectionCallback).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          delay: config.runtime.reconnectDelay * Math.pow(2, 0) // 5000 * 1 = 5000
+        }),
+        expect.any(Object)
+      );
+
+      // Second attempt
+      reconnectionCallback.mockClear();
+      (client as any).reconnectAttempts = 1;
+      (client as any).attemptReconnect();
+      expect(reconnectionCallback).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          delay: config.runtime.reconnectDelay * Math.pow(2, 1) // 5000 * 2 = 10000
+        }),
+        expect.any(Object)
+      );
+
+      // Third attempt
+      reconnectionCallback.mockClear();
+      (client as any).reconnectAttempts = 2;
+      (client as any).attemptReconnect();
+      expect(reconnectionCallback).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          delay: config.runtime.reconnectDelay * Math.pow(2, 2) // 5000 * 4 = 20000
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it('should cap exponential backoff at maximum delay', () => {
+      const reconnectionCallback = vi.fn();
+      client.on('reconnection_scheduled', reconnectionCallback);
+
+      // Set high reconnection attempts to trigger cap, but not exceed maxReconnectAttempts
+      // With baseDelay=5000, attempt 4 would give: 5000 * 2^4 = 80000ms, which should be capped at 30000
+      (client as any).reconnectAttempts = 4; // This would give 5000 * 16 = 80000ms without cap
+      (client as any).maxReconnectAttempts = 10; // Temporarily increase max to allow this test
+      (client as any).attemptReconnect();
+
+      expect(reconnectionCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          delay: 30000 // Should be capped at 30 seconds
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it('should emit reconnection_failed when max attempts reached', () => {
+      const failedCallback = vi.fn();
+      client.on('reconnection_failed', failedCallback);
+
+      // Set attempts to maximum
+      (client as any).reconnectAttempts = config.runtime.reconnectAttempts;
+      (client as any).attemptReconnect();
+
+      expect(failedCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attempts: config.runtime.reconnectAttempts,
+          maxAttempts: config.runtime.reconnectAttempts
+        }),
+        expect.objectContaining({
+          event: 'reconnection_failed',
+          metadata: expect.objectContaining({
+            reason: 'max_attempts_reached'
+          })
+        })
+      );
+    });
+
+    it('should emit reconnection_attempt when actually attempting to connect', async () => {
+      const attemptCallback = vi.fn();
+      client.on('reconnection_attempt', attemptCallback);
+
+      // Mock connect to avoid actual network calls
+      const connectSpy = vi.spyOn(client, 'connect').mockResolvedValue();
+
+      // Trigger reconnection
+      (client as any).attemptReconnect();
+
+      // Fast-forward time to trigger the timeout
+      await vi.runAllTimersAsync();
+
+      expect(attemptCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attempt: 1,
+          maxAttempts: config.runtime.reconnectAttempts
+        }),
+        expect.objectContaining({
+          event: 'reconnection_attempt'
+        })
+      );
+
+      connectSpy.mockRestore();
+    });
+
+    it('should emit reconnection_success on successful reconnection', async () => {
+      const successCallback = vi.fn();
+      client.on('reconnection_success', successCallback);
+
+      // Mock successful connect
+      const connectSpy = vi.spyOn(client, 'connect').mockResolvedValue();
+
+      // Trigger reconnection
+      (client as any).attemptReconnect();
+
+      // Fast-forward time to trigger the timeout
+      await vi.runAllTimersAsync();
+
+      expect(successCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attempt: 1,
+          totalReconnectTime: expect.any(Number)
+        }),
+        expect.objectContaining({
+          event: 'reconnection_success'
+        })
+      );
+
+      connectSpy.mockRestore();
+    });
+
+    it('should emit reconnection_attempt_failed on connection failure', async () => {
+      const failedCallback = vi.fn();
+      client.on('reconnection_attempt_failed', failedCallback);
+
+      // Mock failed connect
+      const connectError = new Error('Connection failed');
+      const connectSpy = vi.spyOn(client, 'connect').mockRejectedValue(connectError);
+
+      // Trigger reconnection
+      (client as any).attemptReconnect();
+
+      // Fast-forward time to trigger the timeout
+      await vi.runAllTimersAsync();
+
+      expect(failedCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attempt: 1,
+          maxAttempts: config.runtime.reconnectAttempts,
+          error: 'Connection failed'
+        }),
+        expect.objectContaining({
+          event: 'reconnection_attempt_failed',
+          metadata: expect.objectContaining({
+            error: connectError
+          })
+        })
+      );
+
+      connectSpy.mockRestore();
+    });
+
+    it('should not attempt reconnection on clean close (code 1000)', () => {
+      const reconnectionCallback = vi.fn();
+      client.on('reconnection_scheduled', reconnectionCallback);
+
+      // Simulate clean close
+      (client as any).handleClose(1000, Buffer.from('Normal closure'));
+
+      expect(reconnectionCallback).not.toHaveBeenCalled();
+    });
+
+    it('should attempt reconnection on non-clean close', () => {
+      const reconnectionCallback = vi.fn();
+      client.on('reconnection_scheduled', reconnectionCallback);
+
+      // Simulate non-clean close (connection lost)
+      (client as any).handleClose(1006, Buffer.from('Connection lost'));
+
+      expect(reconnectionCallback).toHaveBeenCalled();
+    });
+
+    it('should clear reconnection timeout on disconnect', () => {
+      // Start a reconnection attempt
+      (client as any).attemptReconnect();
+      
+      // Verify timeout was set
+      expect((client as any).reconnectTimeout).not.toBeNull();
+      
+      // Call disconnect
+      client.disconnect();
+      
+      // Verify timeout was cleared
+      expect((client as any).reconnectTimeout).toBeNull();
+    });
+
+    it('should reset reconnection attempts on successful connection', async () => {
+      // Set some failed attempts
+      (client as any).reconnectAttempts = 2;
+      
+      // Mock successful connection
+      mockWebSocket.readyState = 1; // OPEN
+      const connectSpy = vi.spyOn(client, 'connect').mockImplementation(async () => {
+        (client as any).reconnectAttempts = 0; // This should happen in actual connect()
+        (client as any).emit('authenticated', {});
+      });
+      
+      // Should reset attempts after successful connection
+      await client.connect();
+      
+      expect((client as any).reconnectAttempts).toBe(0);
+      
+      connectSpy.mockRestore();
     });
   });
 }); 

@@ -40,7 +40,8 @@ export class WebSocketClient {
   private client: Client4;
   private ws: WebSocket | null = null;
   private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 10;
+  private maxReconnectAttempts: number;
+  private baseReconnectDelay: number;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private eventListeners: Map<string, Set<(data: any) => void>> = new Map();
   private isAuthenticated: boolean = false;
@@ -53,6 +54,10 @@ export class WebSocketClient {
     this.client = new Client4();
     this.client.setUrl(config.env.MATTERMOST_URL);
     this.client.setToken(config.env.MATTERMOST_TOKEN);
+    
+    // Use configurable values
+    this.maxReconnectAttempts = config.runtime.reconnectAttempts;
+    this.baseReconnectDelay = config.runtime.reconnectDelay;
   }
 
   /**
@@ -407,20 +412,70 @@ export class WebSocketClient {
   private attemptReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       this.logger.error(`Maximum reconnection attempts (${this.maxReconnectAttempts}) reached`);
+      // Emit reconnection failed event
+      this.emitEvent('reconnection_failed', {
+        attempts: this.reconnectAttempts,
+        maxAttempts: this.maxReconnectAttempts
+      }, {
+        timestamp: Date.now(),
+        reason: 'max_attempts_reached'
+      });
       return;
     }
     
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    const delay = Math.min(this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts), 30000);
     this.reconnectAttempts++;
     
     this.logger.info(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     
+    // Emit reconnection attempt event
+    this.emitEvent('reconnection_scheduled', {
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.maxReconnectAttempts,
+      delay: delay
+    }, {
+      timestamp: Date.now(),
+      nextAttemptAt: Date.now() + delay
+    });
+    
     this.reconnectTimeout = setTimeout(async () => {
+      this.logger.debug(`Starting reconnection attempt ${this.reconnectAttempts}`);
+      
+      // Emit reconnection starting event
+      this.emitEvent('reconnection_attempt', {
+        attempt: this.reconnectAttempts,
+        maxAttempts: this.maxReconnectAttempts
+      }, {
+        timestamp: Date.now()
+      });
+      
       try {
         await this.connect();
+        // Success event is emitted by connect() when authenticated
+        this.logger.info(`Reconnection attempt ${this.reconnectAttempts} successful`);
+        
+        // Emit reconnection success event
+        this.emitEvent('reconnection_success', {
+          attempt: this.reconnectAttempts,
+          totalReconnectTime: this.reconnectAttempts > 1 ? Date.now() : 0
+        }, {
+          timestamp: Date.now()
+        });
+        
       } catch (error) {
         this.logger.error(`Reconnection attempt ${this.reconnectAttempts} failed: ${error.message}`);
-        // Error handling and further reconnection attempts are handled in connect()
+        
+        // Emit reconnection attempt failed event
+        this.emitEvent('reconnection_attempt_failed', {
+          attempt: this.reconnectAttempts,
+          maxAttempts: this.maxReconnectAttempts,
+          error: error.message
+        }, {
+          timestamp: Date.now(),
+          error: error
+        });
+        
+        // Recursive call will happen through error handling in connect()
       }
     }, delay);
   }
