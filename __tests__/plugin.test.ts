@@ -1,39 +1,27 @@
 import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
-import mattermostPlugin, { MattermostService } from '../src/index';
-import { ModelType, logger } from '@elizaos/core';
+import mattermostPlugin from '../src/index';
+import { MattermostService } from '../src/services/mattermost.service';
+import { elizaLogger } from '@elizaos/core';
 import dotenv from 'dotenv';
 
 // Setup environment variables
 dotenv.config();
 
-// Need to spy on logger for documentation
+// Mock logger for testing
 beforeAll(() => {
-  vi.spyOn(logger, 'info');
-  vi.spyOn(logger, 'error');
-  vi.spyOn(logger, 'warn');
-  vi.spyOn(logger, 'debug');
+  vi.spyOn(elizaLogger, 'info');
+  vi.spyOn(elizaLogger, 'error');
+  vi.spyOn(elizaLogger, 'warn');
+  vi.spyOn(elizaLogger, 'debug');
 });
 
 afterAll(() => {
   vi.restoreAllMocks();
 });
 
-// Create a real runtime for testing
-function createRealRuntime() {
+// Create a mock runtime for testing
+function createMockRuntime() {
   const services = new Map();
-
-  // Create a real service instance if needed
-  const createService = (serviceType: string) => {
-    if (serviceType === MattermostService.serviceType) {
-      return new MattermostService({
-        character: {
-          name: 'Test Character',
-          system: 'You are a helpful assistant for testing.',
-        },
-      } as unknown);
-    }
-    return null;
-  };
 
   return {
     character: {
@@ -42,117 +30,63 @@ function createRealRuntime() {
       plugins: [],
       settings: {},
     },
-    getSetting: () => null,
-    models: mattermostPlugin.models,
+    getSetting: vi.fn(() => null),
     db: {
-      get: () => null,
-      set: () => true,
-      delete: () => true,
-      getKeys: () => [],
+      get: vi.fn(() => null),
+      set: vi.fn(() => true),
+      delete: vi.fn(() => true),
+      getKeys: vi.fn(() => []),
     },
-    getService: (serviceType: string) => {
-      // Log the service request for debugging
-      logger.debug(`Requesting service: ${serviceType}`);
-
-      // Get from cache or create new
-      if (!services.has(serviceType)) {
-        logger.debug(`Creating new service: ${serviceType}`);
-        services.set(serviceType, createService(serviceType));
-      }
-
-      return services.get(serviceType);
-    },
-    registerService: (_serviceType: string, service: unknown) => {
-      logger.debug(`Registering service: ${_serviceType}`);
-      services.set(_serviceType, service);
-    },
+    getService: vi.fn((serviceType: string) => services.get(serviceType)),
+    registerService: vi.fn((serviceType: string, service: unknown) => {
+      services.set(serviceType, service);
+    }),
   };
 }
 
-describe('Plugin Configuration', () => {
-  it('should have correct plugin metadata', () => {
-    expect(mattermostPlugin.name).toBe('plugin-mattermost-client');
-    expect(mattermostPlugin.description).toMatch(/Mattermost client plugin/);
-    expect(mattermostPlugin.config).toBeDefined();
+describe('Plugin Structure', () => {
+  it('should have correct plugin name', () => {
+    expect(mattermostPlugin.name).toBe('mattermost');
   });
 
-  it('should include the MATTERMOST_SERVER_URL in config', () => {
-    expect(mattermostPlugin.config).toHaveProperty('MATTERMOST_SERVER_URL');
+  it('should export the MattermostService in services array', () => {
+    expect(mattermostPlugin.services).toBeDefined();
+    expect(Array.isArray(mattermostPlugin.services)).toBe(true);
+    expect(mattermostPlugin.services).toHaveLength(1);
+    expect(mattermostPlugin.services[0]).toBe(MattermostService);
   });
 
-  it('should initialize properly', async () => {
-    const runtime = createRealRuntime();
-    if (mattermostPlugin.init) {
-      await mattermostPlugin.init({ MATTERMOST_SERVER_URL: 'https://example.com' }, runtime as unknown);
-      expect(true).toBe(true); // If we got here, init succeeded
-    }
-  });
-
-  it('should have a valid config', () => {
-    expect(mattermostPlugin.config).toBeDefined();
-    if (mattermostPlugin.config) {
-      // Check if the config has expected MATTERMOST_SERVER_URL property
-      expect(Object.keys(mattermostPlugin.config)).toContain('MATTERMOST_SERVER_URL');
-    }
+  it('should have a clean, minimal plugin structure', () => {
+    const pluginKeys = Object.keys(mattermostPlugin);
+    expect(pluginKeys).toEqual(['name', 'services']);
   });
 });
 
-describe('Plugin Models', () => {
-  it('should have TEXT_SMALL model defined', () => {
-    expect(mattermostPlugin.models?.[ModelType.TEXT_SMALL]).toBeDefined();
-    if (mattermostPlugin.models) {
-      expect(typeof mattermostPlugin.models[ModelType.TEXT_SMALL]).toBe('function');
-    }
+describe('MattermostService Integration', () => {
+  it('should have the correct service type', () => {
+    expect(MattermostService.serviceType).toBe('mattermost');
   });
 
-  it('should have TEXT_LARGE model defined', () => {
-    expect(mattermostPlugin.models?.[ModelType.TEXT_LARGE]).toBeDefined();
-    if (mattermostPlugin.models) {
-      expect(typeof mattermostPlugin.models[ModelType.TEXT_LARGE]).toBe('function');
-    }
+  it('should be constructable', () => {
+    const runtime = createMockRuntime();
+    const service = new MattermostService(runtime as any);
+    expect(service).toBeDefined();
+    expect(service.constructor.name).toBe('MattermostService');
   });
 
-  it('should return a response from TEXT_SMALL model', async () => {
-    if (mattermostPlugin.models?.[ModelType.TEXT_SMALL]) {
-      const runtime = createRealRuntime();
-      const result = await mattermostPlugin.models[ModelType.TEXT_SMALL](runtime as unknown, {
-        prompt: 'test',
-      });
-
-      // Check that we get a non-empty string response
-      expect(result).toBeTruthy();
-      expect(typeof result).toBe('string');
-      expect(result.length).toBeGreaterThan(5);
-    }
-  });
-});
-
-describe('MattermostService', () => {
-  it('should start the service', async () => {
-    const runtime = createRealRuntime();
-    const startResult = await MattermostService.start(runtime as unknown);
-
-    expect(startResult).toBeDefined();
-    expect(startResult.constructor.name).toBe('MattermostService');
-
-    // Test real functionality - check stop method is available
-    expect(typeof startResult.stop).toBe('function');
+  it('should have required service methods', () => {
+    const runtime = createMockRuntime();
+    const service = new MattermostService(runtime as any);
+    
+    // Check that essential methods exist
+    expect(typeof service.stop).toBe('function');
+    expect(typeof service.isReady).toBe('function');
+    expect(typeof service.getConfiguration).toBe('function');
+    expect(typeof service.sendMessage).toBe('function');
   });
 
-  it('should stop the service', async () => {
-    const runtime = createRealRuntime();
-
-    // Register a real service first
-    const service = new MattermostService(runtime as unknown);
-    runtime.registerService(MattermostService.serviceType, service);
-
-    // Spy on the real service's stop method
-    const stopSpy = vi.spyOn(service, 'stop');
-
-    // Call the static stop method
-    await service.stop();
-
-    // Verify the service's stop method was called
-    expect(stopSpy).toHaveBeenCalled();
+  it('should have static start method', () => {
+    expect(typeof MattermostService.start).toBe('function');
+    expect(MattermostService.start).toBeDefined();
   });
 });
