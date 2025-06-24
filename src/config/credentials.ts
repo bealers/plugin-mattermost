@@ -202,7 +202,7 @@ export function redactSensitiveData(obj: any, maxDepth: number = 3): any {
  * Create a safe error message that doesn't expose credentials
  */
 export function createSafeErrorMessage(error: Error, context?: any): string {
-  let message = error.message;
+  let message = error?.message || 'Unknown error';
   
   // Redact any potential credentials from error message
   for (const field of SENSITIVE_FIELDS) {

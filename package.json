@@ -58,6 +58,7 @@
     "eslint": "^9.29.0",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
+    "tsx": "^4.20.3",
     "typescript": "5.8.2",
     "typescript-eslint": "^8.35.0",
     "vitest": "3.1.4"
@@ -66,14 +67,17 @@
     "start": "elizaos start",
     "dev": "tsup --watch",
     "build": "tsup",
-    "lint": "eslint .",
+    "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint . --fix",
-    "test": "vitest run",
+    "test": "vitest",
     "test:component": "vitest run",
     "test:e2e": "elizaos test",
     "publish": "elizaos publish",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "type-check": "tsc --noEmit",
+
+    "bot:start": "elizaos dev --character hiro.character.json"
   },
   "publishConfig": {
     "access": "public"

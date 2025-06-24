@@ -27,6 +27,13 @@ export const envSchema = z.object({
     .default('elizaos-bot')
     .describe('Bot username for display purposes'),
   
+  // Testing configuration
+  MATTERMOST_TEST_CHANNEL: z
+    .string()
+    .optional()
+    .default('eliza-testing')
+    .describe('Channel name for integration testing (should be a public channel the bot can access)'),
+  
   LOG_LEVEL: z
     .enum(['debug', 'info', 'warn', 'error'])
     .default('info')
@@ -34,18 +41,22 @@ export const envSchema = z.object({
   
   // WebSocket configuration
   MATTERMOST_WS_PING_INTERVAL: z
-    .string()
-    .regex(/^\d+$/, 'Must be a number')
-    .transform(val => parseInt(val, 10))
-    .default('30000')
+    .union([
+      z.string().regex(/^\d+$/, 'Must be a number'),
+      z.number()
+    ])
+    .transform(val => typeof val === 'string' ? parseInt(val, 10) : val)
+    .default(30000)
     .describe('WebSocket ping interval in milliseconds'),
   
   // Rate limiting
   MATTERMOST_RATE_LIMIT_PER_MINUTE: z
-    .string()
-    .regex(/^\d+$/, 'Must be a number')
-    .transform(val => parseInt(val, 10))
-    .default('60')
+    .union([
+      z.string().regex(/^\d+$/, 'Must be a number'),
+      z.number()
+    ])
+    .transform(val => typeof val === 'string' ? parseInt(val, 10) : val)
+    .default(60)
     .describe('Maximum API requests per minute'),
 });
 

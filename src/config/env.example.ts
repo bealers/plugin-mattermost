@@ -13,8 +13,8 @@ export function generateEnvTemplate(): string {
 
 # Mattermost Server Configuration
 MATTERMOST_URL=https://your-mattermost-server.com
-MATTERMOST_TOKEN=your_bot_token_here
-MATTERMOST_TEAM=your_team_name
+MATTERMOST_TOKEN=your-bot-user-token
+MATTERMOST_TEAM=your-team-name
 
 # Optional Configuration
 MATTERMOST_BOT_USERNAME=elizaos-bot
@@ -25,6 +25,11 @@ MATTERMOST_WS_PING_INTERVAL=30000
 
 # Rate Limiting (Optional)
 MATTERMOST_RATE_LIMIT_PER_MINUTE=60
+
+# Optional: Test channel for integration tests
+# This should be a public channel that your bot can access
+# If not set, defaults to 'eliza-testing'
+MATTERMOST_TEST_CHANNEL=eliza-testing
 
 # Note: Never commit the actual .env file to version control
 # The .env file should be listed in .gitignore
@@ -76,6 +81,11 @@ export function generateEnvDocumentation(): string {
 ### MATTERMOST_RATE_LIMIT_PER_MINUTE
 - **Description**: Maximum API requests per minute
 - **Default**: \`60\`
+- **Required**: No
+
+### MATTERMOST_TEST_CHANNEL
+- **Description**: Test channel for integration tests
+- **Default**: \`eliza-testing\`
 - **Required**: No
 
 ## Security Notes

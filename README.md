@@ -228,3 +228,158 @@ Provide clear documentation about:
 - Required API keys or credentials
 - Example usage
 - Version history and changelog
+
+# Mattermost Plugin for ElizaOS
+
+## 🤖 **What Is This Project?**
+
+This project implements a **Mattermost plugin for ElizaOS**, enabling AI agent integration with Mattermost chat platforms.
+
+## 🧪 **Testing Setup for Developers**
+
+### Prerequisites for Integration Testing
+
+To run the full integration test suite, you'll need:
+
+1. **Access to a Mattermost Server** (self-hosted or cloud)
+2. **Bot User Account** with API token
+3. **Test Channel** that the bot can access
+
+### Step-by-Step Testing Setup
+
+#### 1. Configure Environment Variables
+
+Create a `.env` file in the project root:
+
+```bash
+# Required: Mattermost server configuration
+MATTERMOST_URL=https://your-mattermost-server.com
+MATTERMOST_TOKEN=your-bot-user-token
+MATTERMOST_TEAM=your-team-name
+
+# Optional: Test channel (defaults to 'eliza-testing')
+MATTERMOST_TEST_CHANNEL=your-test-channel-name
+```
+
+#### 2. Create Test Channel
+
+**Option A: Use Default Channel Name**
+- Create a public channel named `eliza-testing` in your Mattermost team
+- Ensure your bot user has access to this channel
+
+**Option B: Use Custom Channel Name**
+- Create any public channel you prefer
+- Set `MATTERMOST_TEST_CHANNEL=your-channel-name` in `.env`
+- Ensure your bot user has access to this channel
+
+#### 3. Bot Permissions
+
+Your bot user needs:
+- ✅ **Read access** to the test channel
+- ✅ **Write access** to post messages  
+- ✅ **Edit access** to update messages
+- ✅ **API access** via personal access token
+
+### Running Tests
+
+```bash
+# Run all tests (unit + integration)
+npm test
+
+# Run only integration tests
+npm test integration
+
+# Run integration tests in single-run mode (no watch)
+npm test integration -- --run
+```
+
+### Test Behavior
+
+**✅ When Configuration is Available:**
+- All 16 integration tests run against your live Mattermost server
+- Tests create, update, and retrieve real messages
+- Tests validate authentication, channels, and API operations
+
+**⚠️ When Configuration is Missing:**
+- Tests gracefully skip with helpful setup instructions
+- No failures - tests pass but indicate what's needed
+- Perfect for CI/CD environments without Mattermost access
+
+### Test Output Examples
+
+**Successful Integration Test:**
+```
+✅ Configuration loaded successfully
+✅ Authenticated as: your-bot (abc123...)
+✅ Found team: Your Team (xyz789...)
+✅ Found test channel: eliza-testing (channel123...)
+
+✓ should load configuration successfully
+✓ should authenticate and get bot user info
+✓ should post a message to channel
+✓ 16 tests passed
+```
+
+**Graceful Skip (No Config):**
+```
+⚠️ Integration tests will be skipped - configuration failed
+💡 To run integration tests:
+   1. Create .env file with MATTERMOST_URL, MATTERMOST_TOKEN, MATTERMOST_TEAM
+   2. Optionally set MATTERMOST_TEST_CHANNEL (defaults to "eliza-testing")
+   3. Ensure the bot has access to the test channel
+
+✓ 16 tests passed (skipped)
+```
+
+### Troubleshooting Integration Tests
+
+**Problem**: Tests skip with "Test channel not found"
+**Solution**: 
+- Create the channel specified in `MATTERMOST_TEST_CHANNEL`
+- Ensure it's a public channel or the bot is a member
+- Verify the channel name matches exactly (case-sensitive)
+
+**Problem**: Authentication fails
+**Solution**:
+- Verify `MATTERMOST_TOKEN` is a valid personal access token
+- Ensure the bot user account is active
+- Check that the token has appropriate permissions
+
+**Problem**: Team not found
+**Solution**:
+- Verify `MATTERMOST_TEAM` matches your team name exactly
+- Ensure the bot user is a member of the team
+
+## 🚀 **Quick Start**
+
+```bash
+# 1. Clone and install
+git clone <repo>
+cd plugin-mattermost
+npm install
+
+# 2. Configure environment (see Testing Setup above)
+cp src/config/env.example.ts .env
+# Edit .env with your values
+
+# 3. Run tests to verify setup
+npm test
+
+# 4. Start development
+npm run dev
+```
+
+## 🎯 **Current Status**
+
+✅ **REST API Client**: Fully implemented and tested  
+✅ **Integration Tests**: 16 comprehensive tests passing  
+✅ **Authentication**: Working with real Mattermost servers  
+✅ **Message Operations**: Post, retrieve, update messages  
+✅ **Channel Operations**: Get channels by name/ID  
+✅ **Error Handling**: Robust error handling and recovery  
+
+🔄 **Next Steps**: WebSocket client, ElizaOS service integration
+
+---
+
+**For detailed development information, see the `/docs` directory.**

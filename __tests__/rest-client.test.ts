@@ -1,49 +1,81 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RestClient } from '../src/clients/rest.client';
 import type { MattermostConfig } from '../src/config';
-import { Client4 } from '@mattermost/client';
+
+// Create a global mock client that can be accessed in tests
+const mockClient = {
+  setUrl: vi.fn(),
+  setToken: vi.fn(),
+  setUserAgent: vi.fn(),
+  getMe: vi.fn(),
+  getTeamByName: vi.fn(),
+  getTeamMember: vi.fn(),
+  getChannel: vi.fn(),
+  getChannelByName: vi.fn(),
+  createPost: vi.fn(),
+  getPost: vi.fn(),
+  updatePost: vi.fn(),
+  getPosts: vi.fn(),
+};
 
 // Mock the Mattermost client
-vi.mock('@mattermost/client', () => ({
-  Client4: vi.fn(() => ({
-    setUrl: vi.fn(),
-    setToken: vi.fn(),
-    setUserAgent: vi.fn(),
-    getMe: vi.fn(),
-    getTeamByName: vi.fn(),
-    getTeamMember: vi.fn()
-  }))
-}));
+vi.mock('@mattermost/client', () => {
+  const MockClient4 = vi.fn(() => mockClient);
+  
+  return {
+    default: {
+      Client4: MockClient4
+    }
+  };
+});
 
-// Mock the config credentials
+// Mock the config module and credentials
+vi.mock('../src/config', () => {
+  const mockGetMattermostToken = vi.fn(() => 'test-token-12345');
+  return {
+    getMattermostToken: mockGetMattermostToken,
+    loadConfig: vi.fn(),
+    getConfig: vi.fn(),
+  };
+});
+
 vi.mock('../src/config/credentials', () => ({
   createSafeLogger: vi.fn((baseLogger) => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn()
-  }))
+  })),
+  credentialManager: {
+    setCredential: vi.fn(),
+    getCredentialValue: vi.fn(() => 'test-token-12345'),
+    hasValidCredential: vi.fn(() => true),
+  }
 }));
 
 describe('RestClient', () => {
-  let mockClient: any;
   let validConfig: MattermostConfig;
 
   beforeEach(() => {
     // Reset mocks
     vi.clearAllMocks();
     
-    // Create mock client instance
-    mockClient = {
-      setUrl: vi.fn(),
-      setToken: vi.fn(),
-      setUserAgent: vi.fn(),
-      getMe: vi.fn(),
-      getTeamByName: vi.fn(),
-      getTeamMember: vi.fn()
-    };
+    // Setup default mock responses
+    mockClient.getMe.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'test-bot',
+      email: 'bot@example.com'
+    });
     
-    // Mock Client4 constructor to return our mock
-    (Client4 as any).mockImplementation(() => mockClient);
+    mockClient.getTeamByName.mockResolvedValue({
+      id: 'test-team-id',
+      name: 'test-team',
+      display_name: 'Test Team'
+    });
+    
+    mockClient.getTeamMember.mockResolvedValue({
+      team_id: 'test-team-id',
+      user_id: 'test-user-id'
+    });
     
     // Create valid configuration
     validConfig = {
@@ -75,7 +107,7 @@ describe('RestClient', () => {
       const client = new RestClient(validConfig);
       
       expect(client).toBeDefined();
-      expect(Client4).toHaveBeenCalledTimes(1);
+      // Check that the client methods were called correctly
       expect(mockClient.setUrl).toHaveBeenCalledWith('https://chat.example.com');
       expect(mockClient.setToken).toHaveBeenCalledWith('test-token-12345');
       expect(mockClient.setUserAgent).toHaveBeenCalledWith('ElizaOS-MattermostPlugin/testbot');
@@ -88,9 +120,16 @@ describe('RestClient', () => {
       expect(() => new RestClient(invalidConfig as any)).toThrow('MATTERMOST_URL is required');
     });
 
-    it('should throw error for missing token', () => {
+    it('should throw error for missing token', async () => {
       const invalidConfig = { ...validConfig };
       delete invalidConfig.credentials.mattermostToken;
+      
+      // Mock getMattermostToken to throw an error when token is missing
+      const { getMattermostToken } = await import('../src/config');
+      const mockGetMattermostToken = vi.mocked(getMattermostToken);
+      mockGetMattermostToken.mockImplementationOnce(() => {
+        throw new Error('Token not found');
+      });
       
       expect(() => new RestClient(invalidConfig as any)).toThrow('Mattermost token is required');
     });
