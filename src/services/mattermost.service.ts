@@ -1,38 +1,106 @@
 import { Service, IAgentRuntime, elizaLogger } from '@elizaos/core';
+import { 
+    loadConfig, 
+    getConfig, 
+    isConfigLoaded,
+    getMattermostToken,
+    getSafeConfigForLogging,
+    MattermostConfig,
+    createSafeLogger
+} from '../config';
 
 /**
- * Mattermost Service Implementation for ElizaOS 1.x
- * Following the current service architecture instead of deprecated clients
+ * Mattermost Service Implementation
  */
 export class MattermostService extends Service {
     static serviceType = 'mattermost';
     capabilityDescription = 'Mattermost platform integration service for message handling';
 
     private isConnected: boolean = false;
+    private config?: MattermostConfig;
+    private safeLogger = createSafeLogger(elizaLogger);
 
     constructor(runtime?: IAgentRuntime) {
         super(runtime);
     }
 
     static async start(runtime: IAgentRuntime): Promise<MattermostService> {
-        elizaLogger.info('*** STARTING MATTERMOST SERVICE ***');
+        const safeLogger = createSafeLogger(elizaLogger);
+        safeLogger.info('*** STARTING MATTERMOST SERVICE ***');
         
         const service = new MattermostService(runtime);
         
         try {
-            // TODO: Initialize Mattermost API client here
-            // TODO: Set up WebSocket connection
-            // TODO: Set up message event handlers
+            // Load and validate configuration
+            safeLogger.info('Loading Mattermost configuration...');
+            service.config = loadConfig();
+            
+            // Log safe configuration for debugging (without secrets)
+            safeLogger.info('Configuration loaded successfully', getSafeConfigForLogging());
+            
+            // Validate that required credentials are available
+            if (!isConfigLoaded()) {
+                throw new Error('Configuration failed to load properly');
+            }
+            
+            // Initialize service components with configuration
+            await service.initializeComponents();
             
             service.isConnected = true;
-            elizaLogger.success('*** MATTERMOST SERVICE STARTED SUCCESSFULLY ***');
-            elizaLogger.success('🚀 Mattermost service is now ready!');
+            safeLogger.info('*** MATTERMOST SERVICE STARTED SUCCESSFULLY ***');
+            safeLogger.info('🚀 Mattermost service is now ready!');
             
             return service;
         } catch (error) {
-            elizaLogger.error('Failed to start Mattermost service:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown configuration error';
+            safeLogger.error('Failed to start Mattermost service');
+            
+            // Provide helpful guidance for common issues
+            if (errorMessage.includes('MATTERMOST_TOKEN')) {
+                safeLogger.error('💡 Check your bot token is set correctly in .env file');
+            } else if (errorMessage.includes('MATTERMOST_SERVER_URL')) {
+                safeLogger.error('💡 Verify your server URL includes https:// and is accessible');
+            } else if (errorMessage.includes('Configuration Error')) {
+                // Configuration error already has helpful details, just pass it through
+                safeLogger.error(errorMessage);
+            }
+            
             throw error;
         }
+    }
+
+    private async initializeComponents(): Promise<void> {
+        if (!this.config) {
+            throw new Error('Configuration not loaded');
+        }
+
+        this.safeLogger.info('Initializing Mattermost components...');
+        
+        // TODO: Initialize Mattermost API client
+        // TODO: Set up WebSocket connection
+        // TODO: Set up message event handlers
+        
+        this.safeLogger.info('Components initialized');
+    }
+
+    getConfiguration(): MattermostConfig {
+        if (!this.config) {
+            throw new Error('Service not initialized');
+        }
+        return this.config;
+    }
+
+    private getToken(): string {
+        try {
+            return getMattermostToken();
+        } catch (error) {
+            this.safeLogger.error('Failed to get token', error);
+            throw new Error('Authentication token not available');
+        }
+    }
+
+    isReady(): boolean {
+        return this.isConnected && !!this.config && isConfigLoaded();
     }
 
     async stop(): Promise<void> {
@@ -50,18 +118,20 @@ export class MattermostService extends Service {
         }
     }
 
-    // TODO: Add methods for sending messages, handling events, etc.
     async sendMessage(roomId: string, content: string): Promise<void> {
-        // Implementation will go here
-        elizaLogger.info(`Sending message to room ${roomId}: ${content}`);
+        if (!this.isReady()) {
+            throw new Error('Service not ready');
+        }
+        
+        this.safeLogger.info(`Sending message to room ${roomId}`, { contentLength: content.length });
+        // TODO: Implement actual message sending
     }
 }
 
-// Export the plugin using the correct 1.x service architecture
 const mattermostPlugin = {
     name: "mattermost",
-    description: "Mattermost platform integration service for ElizaOS",
-    services: [MattermostService]  // Services, not clients!
+    description: "Mattermost platform integration service",
+    services: [MattermostService]
 };
 
 export default mattermostPlugin;

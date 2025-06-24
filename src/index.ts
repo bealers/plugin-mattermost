@@ -1,4 +1,5 @@
 import { MattermostService } from './services/mattermost.service';
+import { generateEnvTemplate, validateEnvironmentSetup } from './config/env.example';
 import pkg from '../package.json';
 
 // Extract agentConfig from package.json

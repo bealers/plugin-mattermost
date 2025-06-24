@@ -1,15 +1,19 @@
+# Symlinks (convenience folders)
 docs
+.bealers/
+
+# Build and runtime
+dist/
+.eliza/
+
+# Tools and configs
 .roo/
 .taskmaster/
 .roomodes
-dist/
-.eliza/
-.bealers/
 #.cursor/
 .env.example
 
-
-# Added by Task Maslster AI
+# Added by Task Master AI
 # Logs
 logs
 *.log
