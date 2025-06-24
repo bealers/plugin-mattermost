@@ -2,9 +2,9 @@ docs
 .roo/
 .taskmaster/
 .roomodes
-hiro.character.json
 dist/
 .eliza/
+.bealers/
 #.cursor/
 .env.example
 

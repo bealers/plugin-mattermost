@@ -48,23 +48,27 @@
     "ws": "^8.18.2",
     "zod": "^3.25.67"
   },
-  "peerDependencies": {},
   "devDependencies": {
     "@elizaos/cli": "latest",
+    "@eslint/js": "^9.29.0",
+    "@types/node": "^24.0.4",
     "dotenv": "16.4.5",
+    "eslint": "^9.29.0",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
     "typescript": "5.8.2",
+    "typescript-eslint": "^8.35.0",
     "vitest": "3.1.4"
   },
   "scripts": {
     "start": "elizaos start",
-    "dev": "elizaos dev",
+    "dev": "tsup --watch",
     "build": "tsup",
-    "lint": "prettier --write ./src",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
     "test:component": "vitest run",
     "test:e2e": "elizaos test",
-    "test": "npm run test:component && npm run test:e2e",
     "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"

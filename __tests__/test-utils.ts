@@ -1,7 +1,6 @@
 import { vi } from 'vitest';
 import {
   Content,
-  IAgentRuntime,
   Memory,
   ModelType,
   Service,
@@ -33,7 +32,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     getSetting: vi.fn().mockReturnValue(null),
 
     // Model methods
-    useModel: vi.fn().mockImplementation((modelType, params) => {
+    useModel: vi.fn().mockImplementation((modelType) => {
       if (modelType === ModelType.TEXT_SMALL) {
         return Promise.resolve('Never gonna give you up, never gonna let you down');
       } else if (modelType === ModelType.TEXT_LARGE) {
@@ -139,7 +138,7 @@ export interface MockRuntime {
   character: {
     name: string;
     bio: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   services: Map<string, Service>;
   getService: ReturnType<typeof vi.fn>;
@@ -147,7 +146,7 @@ export interface MockRuntime {
   getSetting: ReturnType<typeof vi.fn>;
   useModel: ReturnType<typeof vi.fn>;
   init: ReturnType<typeof vi.fn>;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Add spy on logger for common usage in tests

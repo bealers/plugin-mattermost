@@ -1,67 +1,43 @@
-import { Service, IAgentRuntime, elizaLogger, EventType } from '@elizaos/core';
+import { MattermostService } from './services/mattermost.service';
+import pkg from '../package.json';
 
-/**
- * Mattermost Service Implementation for ElizaOS 1.x
- * Following the current service architecture instead of deprecated clients
- */
-export class MattermostService extends Service {
-    static serviceType = 'mattermost';
-    capabilityDescription = 'Mattermost platform integration service for message handling';
+// Extract agentConfig from package.json
+const config = pkg.agentConfig?.pluginParameters || {};
 
-    private isConnected: boolean = false;
+// Minimal model stubs
+const models = {
+  TEXT_SMALL: async (_runtime: unknown, { prompt }: { prompt: string }) => `Echo: ${prompt}`,
+  TEXT_LARGE: async (_runtime: unknown, { prompt }: { prompt: string }) => `Echo: ${prompt}`,
+};
 
-    constructor(runtime?: IAgentRuntime) {
-        super(runtime);
-    }
+// Minimal action stub
+const actions = [
+  {
+    name: 'echo',
+    description: 'Echoes the input',
+    handler: async (_runtime: unknown, { text }: { text: string }) => text,
+  },
+];
 
-    static async start(runtime: IAgentRuntime): Promise<MattermostService> {
-        elizaLogger.info('*** STARTING MATTERMOST SERVICE ***');
-        
-        const service = new MattermostService(runtime);
-        
-        try {
-            // TODO: Initialize Mattermost API client here
-            // TODO: Set up WebSocket connection
-            // TODO: Set up message event handlers
-            
-            service.isConnected = true;
-            elizaLogger.success('*** MATTERMOST SERVICE STARTED SUCCESSFULLY ***');
-            elizaLogger.success('🚀 Mattermost service is now ready!');
-            
-            return service;
-        } catch (error) {
-            elizaLogger.error('Failed to start Mattermost service:', error);
-            throw error;
-        }
-    }
-
-    async stop(): Promise<void> {
-        elizaLogger.info('*** STOPPING MATTERMOST SERVICE ***');
-        
-        try {
-            // TODO: Clean up WebSocket connections
-            // TODO: Clean up API clients
-            
-            this.isConnected = false;
-            elizaLogger.info('*** MATTERMOST SERVICE STOPPED ***');
-        } catch (error) {
-            elizaLogger.error('Failed to stop Mattermost service:', error);
-            throw error;
-        }
-    }
-
-    // TODO: Add methods for sending messages, handling events, etc.
-    async sendMessage(roomId: string, content: string): Promise<void> {
-        // Implementation will go here
-        elizaLogger.info(`Sending message to room ${roomId}: ${content}`);
-    }
+// Plugin init function
+async function init(settings: unknown, runtime: { logger?: { info?: (...args: unknown[]) => void } }) {
+  if (runtime.logger && typeof runtime.logger.info === 'function') {
+    runtime.logger.info('Initializing Mattermost plugin with settings:', settings);
+  } else {
+    console.info('Initializing Mattermost plugin with settings:', settings);
+  }
+  // Any additional setup can go here
 }
 
-// Export the plugin using the correct 1.x service architecture
 const mattermostPlugin = {
-    name: "mattermost",
-    description: "Mattermost platform integration service for ElizaOS",
-    services: [MattermostService]  // Services, not clients!
+  name: 'plugin-mattermost-client',
+  description: 'Mattermost client plugin for ElizaOS - enables AI agent integration with Mattermost chat platforms',
+  config,
+  init,
+  models,
+  actions,
+  services: [MattermostService],
 };
 
 export default mattermostPlugin;
+export { MattermostService }; 
