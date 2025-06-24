@@ -1,4 +1,5 @@
 import MattermostClient from '@mattermost/client';
+const { Client4 } = MattermostClient;
 import { UserProfile, Team, Channel, FileInfo } from '@mattermost/types';
 import type { MattermostConfig } from '../config';
 import { createSafeLogger } from '../config/credentials';
@@ -206,7 +207,7 @@ async function withRetry<T>(
  * Wraps the official Mattermost Client4 SDK with configuration integration
  */
 export class RestClient {
-  private client: Client4;
+  private client: InstanceType<typeof Client4>;
   private config: MattermostConfig;
   private botUser: UserProfile | null = null;
   private team: Team | null = null;
@@ -422,7 +423,7 @@ export class RestClient {
    * Get the underlying Client4 instance for advanced operations
    * Use with caution - prefer the wrapper methods when available
    */
-  getClient(): Client4 {
+  getClient(): InstanceType<typeof Client4> {
     if (!this.isInitialized) {
       throw new Error('RestClient not initialized. Call initialize() first.');
     }

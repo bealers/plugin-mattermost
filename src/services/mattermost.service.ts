@@ -59,7 +59,7 @@ export class MattermostService extends Service {
             return service;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown configuration error';
-            safeLogger.error('Failed to start Mattermost service', { errorMessage });
+            safeLogger.error('Failed to start Mattermost service', error instanceof Error ? error : new Error(errorMessage));
             
             // Provide helpful guidance for common issues
             if (errorMessage.includes('MATTERMOST_TOKEN')) {
@@ -149,9 +149,8 @@ export class MattermostService extends Service {
             
             return post;
         } catch (error) {
-            this.safeLogger.error('❌ Failed to send message', { 
-                channelId, 
-                errorMessage: error instanceof Error ? error.message : 'Unknown error' 
+            this.safeLogger.error('❌ Failed to send message', error instanceof Error ? error : new Error('Unknown error'), { 
+                channelId
             });
             throw error;
         }
@@ -220,8 +219,7 @@ I'm still learning, but I'm here to help! Try saying "hello", "help", or "status
             });
 
         } catch (error) {
-            this.safeLogger.error('❌ Error handling message', {
-                errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            this.safeLogger.error('❌ Error handling message', error instanceof Error ? error : new Error('Unknown error'), {
                 messageId: message.id
             });
         }
@@ -248,9 +246,7 @@ I'm still learning, but I'm here to help! Try saying "hello", "help", or "status
             
             return channel;
         } catch (error) {
-            this.safeLogger.error(`❌ Failed to join channel: ${channelName}`, {
-                errorMessage: error instanceof Error ? error.message : 'Unknown error'
-            });
+            this.safeLogger.error(`❌ Failed to join channel: ${channelName}`, error instanceof Error ? error : new Error('Unknown error'));
             throw error;
         }
     }
