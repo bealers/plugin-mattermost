@@ -44,6 +44,8 @@
   ],
   "dependencies": {
     "@elizaos/core": "latest",
+    "@mattermost/client": "^10.8.0",
+    "@mattermost/types": "^10.8.0",
     "axios": "^1.10.0",
     "ws": "^8.18.2",
     "zod": "^3.25.67"

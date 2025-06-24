@@ -1,9 +1,10 @@
-import { Service } from "@elizaos/core";
+import { Service, elizaLogger } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
 import { 
     loadConfig, 
     isConfigLoaded,
     getSafeConfigForLogging,
+    getMattermostToken,
     type MattermostConfig 
 } from '../config';
 import { createSafeLogger } from '../config/credentials';
@@ -16,7 +17,7 @@ export class MattermostService extends Service {
     capabilityDescription = 'Mattermost platform integration service for message handling';
 
     private isConnected: boolean = false;
-    private config?: MattermostConfig;
+    private mattermostConfig?: MattermostConfig;
     private safeLogger = createSafeLogger(elizaLogger);
 
     constructor(runtime?: IAgentRuntime) {
@@ -32,7 +33,7 @@ export class MattermostService extends Service {
         try {
             // Load and validate configuration
             safeLogger.info('Loading Mattermost configuration...');
-            service.config = loadConfig();
+            service.mattermostConfig = loadConfig();
             
             // Log safe configuration for debugging (without secrets)
             safeLogger.info('Configuration loaded successfully', getSafeConfigForLogging());
@@ -69,7 +70,7 @@ export class MattermostService extends Service {
     }
 
     private async initializeComponents(): Promise<void> {
-        if (!this.config) {
+        if (!this.mattermostConfig) {
             throw new Error('Configuration not loaded');
         }
 
@@ -83,10 +84,10 @@ export class MattermostService extends Service {
     }
 
     getConfiguration(): MattermostConfig {
-        if (!this.config) {
+        if (!this.mattermostConfig) {
             throw new Error('Service not initialized');
         }
-        return this.config;
+        return this.mattermostConfig;
     }
 
     private getToken(): string {
@@ -99,7 +100,7 @@ export class MattermostService extends Service {
     }
 
     isReady(): boolean {
-        return this.isConnected && !!this.config && isConfigLoaded();
+        return this.isConnected && !!this.mattermostConfig && isConfigLoaded();
     }
 
     async stop(): Promise<void> {

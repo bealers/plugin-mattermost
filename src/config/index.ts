@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { envSchema, runtimeConfigSchema, configSchema } from './schema';
-import { 
+import type { 
   MattermostConfig, 
   ConfigOptions, 
   ConfigError, 
@@ -85,7 +85,6 @@ class ConfigManager {
 
   /**
    * Validate environment variables with descriptive errors
-   * Following ElizaOS pattern for atomic validation
    */
   private validateEnvironment(envVars: Record<string, string | undefined>): EnvConfig {
     try {
@@ -269,7 +268,14 @@ export function getSafeConfigForLogging(): any {
 }
 
 // Re-export types and schemas for external use
-export * from './types';
+export type { 
+  MattermostConfig, 
+  ConfigOptions, 
+  ConfigError, 
+  ConfigState,
+  EnvConfig,
+  RuntimeConfig 
+} from './types';
 export * from './schema';
 export * from './credentials';
 
