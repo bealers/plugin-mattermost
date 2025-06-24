@@ -26,7 +26,7 @@ class ConfigManager {
 
   /**
    * Load and validate configuration
-   * Following ElizaOS pattern for graceful error handling with secure credential storage
+
    */
   public loadConfig(options: ConfigOptions = {}): MattermostConfig {
     try {
