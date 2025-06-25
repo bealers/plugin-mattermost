@@ -615,43 +615,49 @@ export class MessageManager {
     return this.executeWithRetry(async () => {
       this.logger.debug('Retrieving thread context', { threadId, channelId });
 
-      // Get posts around the thread root
-      const threadPosts = await this.restClient.getPostsAroundPost(threadId, channelId, {
-        before: 10,
-        after: 10
-      });
-
-      if (!threadPosts?.posts) {
-        this.logger.warn('No thread posts found', { threadId, channelId });
-        return null;
-      }
-
-      // Convert posts to context format
-      const messages = Object.values(threadPosts.posts)
-        .filter((post: any) => post && post.message)
-        .sort((a: any, b: any) => a.create_at - b.create_at)
-        .map((post: any) => ({
-          id: post.id,
-          userId: post.user_id,
-          message: post.message,
-          timestamp: post.create_at,
-          username: post.user_display_name || 'Unknown User'
-        }))
-        .slice(-10); // Keep last 10 messages for context
-
-      const context: ThreadContext = {
-        threadId,
-        messages,
-        messageCount: messages.length
-      };
-
-      this.logger.debug('Thread context retrieved', {
-        threadId,
-        messageCount: context.messageCount,
-        contextSize: context.messages.length
-      });
-
-      return context;
+      // TODO: Re-enable when getPostsAroundPost API method is fixed
+      // For now, return null to disable thread context
+      this.logger.warn('Thread context temporarily disabled due to API limitations');
+      return null;
+      
+      // COMMENTED OUT UNTIL API METHOD IS FIXED:
+      //
+      // const threadPosts = await this.restClient.getPostsAroundPost(threadId, channelId, {
+      //   before: 10,
+      //   after: 10
+      // });
+      //
+      // if (!threadPosts?.posts) {
+      //   this.logger.warn('No thread posts found', { threadId, channelId });
+      //   return null;
+      // }
+      //
+      // // Convert posts to context format
+      // const messages = Object.values(threadPosts.posts)
+      //   .filter((post: any) => post && post.message)
+      //   .sort((a: any, b: any) => a.create_at - b.create_at)
+      //   .map((post: any) => ({
+      //     id: post.id,
+      //     userId: post.user_id,
+      //     message: post.message,
+      //     timestamp: post.create_at,
+      //     username: post.user_display_name || 'Unknown User'
+      //   }))
+      //   .slice(-10); // Keep last 10 messages for context
+      //
+      // const context: ThreadContext = {
+      //   threadId,
+      //   messages,
+      //   messageCount: messages.length
+      // };
+      //
+      // this.logger.debug('Thread context retrieved', {
+      //   threadId,
+      //   messageCount: context.messageCount,
+      //   contextSize: context.messages.length
+      // });
+      //
+      // return context;
 
     }, 'thread-context', 'Thread context retrieval');
   }
