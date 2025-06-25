@@ -267,155 +267,225 @@ Provide clear documentation about:
 
 # Mattermost Plugin for ElizaOS
 
-## 🤖 **What Is This Project?**
+A comprehensive Mattermost integration plugin for ElizaOS that enables real-time bidirectional communication between ElizaOS agents and Mattermost teams.
 
-This project implements a **Mattermost plugin for ElizaOS**, enabling AI agent integration with Mattermost chat platforms.
+## ✅ Current Status: **FULLY OPERATIONAL**
 
-## 🧪 **Testing Setup for Developers**
+### Working Features
+- ✅ **Plugin Loading**: Successfully loads into ElizaOS using package name `@bealers/plugin-mattermost`
+- ✅ **Authentication**: Bot authenticates to Mattermost servers using access tokens
+- ✅ **Direct Messages**: Full bidirectional DM communication working
+- ✅ **Channel Mentions**: Responds to @mentions in public channels
+- ✅ **WebSocket Connection**: Real-time message processing via WebSocket
+- ✅ **AI Integration**: ElizaOS generates contextual responses to messages
+- ✅ **Error Handling**: Robust error handling and reconnection logic
 
-### Prerequisites for Integration Testing
+### Message Processing Behavior
+- **Direct Messages**: Always processed and responded to
+- **Channel Messages**: Only processed when the bot is mentioned (e.g., `@hiro hello`)
+- **Response Time**: Typically 1-5 seconds for AI response generation
+- **Thread Support**: Responses posted as threaded replies
 
-To run the full integration test suite, you'll need:
+## 🚀 Quick Setup
 
-1. **Access to a Mattermost Server** (self-hosted or cloud)
-2. **Bot User Account** with API token
-3. **Test Channel** that the bot can access
+### Prerequisites
+- Node.js 18+ with Bun package manager
+- ElizaOS installed and configured
+- Mattermost server with bot account and access token
 
-### Step-by-Step Testing Setup
+### Installation
 
-#### 1. Configure Environment Variables
-
-Create a `.env` file in the project root:
-
+1. **Clone and build the plugin:**
 ```bash
-# Required: Mattermost server configuration
-MATTERMOST_URL=https://your-mattermost-server.com
-MATTERMOST_TOKEN=your-bot-user-token
-MATTERMOST_TEAM=your-team-name
-
-# Optional: Test channel (defaults to 'eliza-testing')
-MATTERMOST_TEST_CHANNEL=your-test-channel-name
-```
-
-#### 2. Create Test Channel
-
-**Option A: Use Default Channel Name**
-- Create a public channel named `eliza-testing` in your Mattermost team
-- Ensure your bot user has access to this channel
-
-**Option B: Use Custom Channel Name**
-- Create any public channel you prefer
-- Set `MATTERMOST_TEST_CHANNEL=your-channel-name` in `.env`
-- Ensure your bot user has access to this channel
-
-#### 3. Bot Permissions
-
-Your bot user needs:
-- ✅ **Read access** to the test channel
-- ✅ **Write access** to post messages  
-- ✅ **Edit access** to update messages
-- ✅ **API access** via personal access token
-
-### Running Tests
-
-```bash
-# Run all tests (unit + integration)
-npm test
-
-# Run only integration tests
-npm test integration
-
-# Run integration tests in single-run mode (no watch)
-npm test integration -- --run
-```
-
-### Test Behavior
-
-**✅ When Configuration is Available:**
-- All 16 integration tests run against your live Mattermost server
-- Tests create, update, and retrieve real messages
-- Tests validate authentication, channels, and API operations
-
-**⚠️ When Configuration is Missing:**
-- Tests gracefully skip with helpful setup instructions
-- No failures - tests pass but indicate what's needed
-- Perfect for CI/CD environments without Mattermost access
-
-### Test Output Examples
-
-**Successful Integration Test:**
-```
-✅ Configuration loaded successfully
-✅ Authenticated as: your-bot (abc123...)
-✅ Found team: Your Team (xyz789...)
-✅ Found test channel: eliza-testing (channel123...)
-
-✓ should load configuration successfully
-✓ should authenticate and get bot user info
-✓ should post a message to channel
-✓ 16 tests passed
-```
-
-**Graceful Skip (No Config):**
-```
-⚠️ Integration tests will be skipped - configuration failed
-💡 To run integration tests:
-   1. Create .env file with MATTERMOST_URL, MATTERMOST_TOKEN, MATTERMOST_TEAM
-   2. Optionally set MATTERMOST_TEST_CHANNEL (defaults to "eliza-testing")
-   3. Ensure the bot has access to the test channel
-
-✓ 16 tests passed (skipped)
-```
-
-### Troubleshooting Integration Tests
-
-**Problem**: Tests skip with "Test channel not found"
-**Solution**: 
-- Create the channel specified in `MATTERMOST_TEST_CHANNEL`
-- Ensure it's a public channel or the bot is a member
-- Verify the channel name matches exactly (case-sensitive)
-
-**Problem**: Authentication fails
-**Solution**:
-- Verify `MATTERMOST_TOKEN` is a valid personal access token
-- Ensure the bot user account is active
-- Check that the token has appropriate permissions
-
-**Problem**: Team not found
-**Solution**:
-- Verify `MATTERMOST_TEAM` matches your team name exactly
-- Ensure the bot user is a member of the team
-
-## 🚀 **Quick Start**
-
-```bash
-# 1. Clone and install
-git clone <repo>
+git clone <repository-url>
 cd plugin-mattermost
-npm install
-
-# 2. Configure environment (see Testing Setup above)
-cp src/config/env.example.ts .env
-# Edit .env with your values
-
-# 3. Run tests to verify setup
-npm test
-
-# 4. Start development
-npm run dev
+bun install
+bun run build
 ```
 
-## 🎯 **Current Status**
+2. **Configure your character file:**
+Add the plugin to your ElizaOS character file's plugins array:
+```json
+{
+  "plugins": [
+    "@elizaos/plugin-bootstrap",
+    "@elizaos/plugin-openai",
+    "@bealers/plugin-mattermost"
+  ]
+}
+```
 
-✅ **REST API Client**: Fully implemented and tested  
-✅ **Integration Tests**: 16 comprehensive tests passing  
-✅ **Authentication**: Working with real Mattermost servers  
-✅ **Message Operations**: Post, retrieve, update messages  
-✅ **Channel Operations**: Get channels by name/ID  
-✅ **Error Handling**: Robust error handling and recovery  
+3. **Set environment variables:**
+Create a `.env` file with your Mattermost configuration:
+```env
+MATTERMOST_SERVER_URL=https://your-mattermost-server.com
+MATTERMOST_BOT_TOKEN=your-bot-access-token
+MATTERMOST_BOT_USERNAME=your-bot-username
+MATTERMOST_TEAM_NAME=your-team-name
+```
 
-🔄 **Next Steps**: WebSocket client, ElizaOS service integration
+4. **Start ElizaOS:**
+```bash
+elizaos dev --character your-character.json
+```
+
+## 📋 Usage
+
+### Direct Messages
+Send a direct message to your bot user in Mattermost:
+```
+Hello! How are you doing?
+```
+The bot will respond directly in the DM thread.
+
+### Channel Mentions
+Mention the bot in any channel where it has access:
+```
+@your-bot-name what's the weather like today?
+```
+The bot will respond as a threaded reply to your message.
+
+## 🏗️ Architecture
+
+### Core Components
+- **MattermostService**: Main service handling authentication and lifecycle
+- **MessageManager**: Processes incoming messages and manages responses  
+- **WebSocketClient**: Maintains real-time connection to Mattermost
+- **RestClient**: Handles API calls for posting messages and fetching data
+- **AttachmentManager**: Manages file uploads and media handling
+
+### Message Flow
+1. Mattermost WebSocket receives message event
+2. MessageManager filters messages (DMs always processed, channels only if mentioned)
+3. ElizaOS generates AI response based on message content and context
+4. Response posted back to Mattermost via REST API
+5. Message appears as threaded reply in original channel/DM
+
+## 🧪 Testing
+
+The project includes comprehensive test suites:
+
+```bash
+# Unit tests
+bun test
+
+# Integration tests  
+bun run test:integration
+
+# End-to-end tests
+bun run test:e2e
+
+# Manual testing
+bun run test:manual
+```
+
+### Live Testing
+1. Start ElizaOS with the plugin loaded
+2. Send a DM to your bot: `Hello, are you working?`
+3. Mention the bot in a channel: `@bot-name test message`
+4. Check ElizaOS logs for message processing confirmation
+
+## 📊 Monitoring
+
+The plugin provides detailed logging for monitoring:
+- Connection status and health checks
+- Message processing metrics (processing time, response length)
+- Error tracking and recovery attempts
+- WebSocket connection stability
+
+Example log output:
+```
+{"msg":"Processing message for AI response","channelName":"general","isMention":true}
+{"msg":"AI response generated successfully","responseLength":133,"processingTime":1604}
+{"msg":"Response posted successfully"}
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `MATTERMOST_SERVER_URL` | Mattermost server URL | Yes |
+| `MATTERMOST_BOT_TOKEN` | Bot access token | Yes |
+| `MATTERMOST_BOT_USERNAME` | Bot username | Yes |
+| `MATTERMOST_TEAM_NAME` | Team name to join | Yes |
+| `MATTERMOST_DEBUG` | Enable debug logging | No |
+
+### Character File Configuration
+The plugin is loaded via the character file's plugins array using the package name `@bealers/plugin-mattermost`.
+
+## 🛠️ Development
+
+### Project Structure
+```
+src/
+├── actions/           # ElizaOS action definitions
+├── clients/          # REST and WebSocket clients
+├── config/           # Configuration and validation
+├── managers/         # Message and attachment managers
+├── services/         # Main Mattermost service
+├── types/           # TypeScript type definitions
+└── utils/           # Utility functions and error handling
+```
+
+### Building
+```bash
+bun run build    # Build for production
+bun run dev      # Development mode with watch
+bun run clean    # Clean build artifacts
+```
+
+### Code Quality
+```bash
+bun run lint     # ESLint checking
+bun run format   # Prettier formatting
+bun run typecheck # TypeScript validation
+```
+
+## 📈 Performance
+
+- **Message Processing**: 1-5 second response times
+- **Connection Stability**: Auto-reconnection with exponential backoff
+- **Memory Usage**: Efficient message caching and cleanup
+- **Throughput**: Handles multiple concurrent conversations
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**Plugin not loading:**
+- Ensure package name `@bealers/plugin-mattermost` is in character file
+- Verify the plugin is built (`dist/index.js` exists)
+- Check ElizaOS startup logs for loading errors
+
+**Bot not responding to mentions:**
+- Verify the bot has access to the channel
+- Ensure the mention format includes the @ symbol
+- Check that the bot user is active in Mattermost
+
+**WebSocket connection issues:**
+- Verify `MATTERMOST_SERVER_URL` is correct
+- Check bot token permissions
+- Monitor logs for connection status
+
+### Debug Mode
+Enable debug logging by setting `MATTERMOST_DEBUG=true` in your environment.
+
+## 📄 License
+
+MIT License - see LICENSE file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Submit a pull request
+
+See CONTRIBUTING.md for detailed guidelines.
 
 ---
 
-**For detailed development information, see the `/docs` directory.**
+**Status**: Production Ready ✅  
+**Last Updated**: January 2025  
+**ElizaOS Compatibility**: v2.0+
