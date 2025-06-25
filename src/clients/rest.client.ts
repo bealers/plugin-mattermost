@@ -1,6 +1,7 @@
-import { Client4 } from 'mattermost-redux/client';
-import { elizaLogger, createSafeLogger } from '@elizaos/core';
+import { Client4 } from '@mattermost/client';
+import { elizaLogger } from '@elizaos/core';
 import { MattermostConfig } from '../config';
+import { createSafeLogger } from '../config/credentials';
 import { ThreadsClient, ThreadContext, ThreadContextOptions } from './threads.client';
 import { PostsClient, CreatePostOptions, GetPostsOptions } from './posts.client';
 import { BaseClient, withRetry, MattermostApiError } from './core/base-client';
@@ -25,7 +26,7 @@ export class RestClient extends BaseClient {
   public readonly posts: PostsClient;
 
   constructor(config: MattermostConfig) {
-    const logger = createSafeLogger('RestClient', elizaLogger);
+    const logger = createSafeLogger(elizaLogger);
     const client = new Client4();
     
     super(client, config, logger);
@@ -47,13 +48,13 @@ export class RestClient extends BaseClient {
 
       try {
         this.logger.info('Initializing RestClient', {
-          serverUrl: this.config.serverUrl,
-          botUsername: this.config.botUsername,
+          serverUrl: this.config.env.MATTERMOST_URL,
+          botUsername: this.config.env.MATTERMOST_BOT_USERNAME,
           attempt: this.retryCount + 1
         });
 
         // Configure client
-        this.client.setUrl(this.config.serverUrl);
+        this.client.setUrl(this.config.env.MATTERMOST_URL);
         
         // Authenticate
         await this.authenticate();
@@ -102,16 +103,11 @@ export class RestClient extends BaseClient {
    */
   private async authenticate(): Promise<void> {
     try {
-      if (this.config.accessToken) {
+      if (this.config.env.MATTERMOST_TOKEN) {
         this.logger.debug('Authenticating with access token');
-        this.client.setToken(this.config.accessToken);
-      } else if (this.config.botUsername && this.config.botPassword) {
-        this.logger.debug('Authenticating with username/password', {
-          username: this.config.botUsername
-        });
-        await this.client.loginById(this.config.botUsername, this.config.botPassword);
+        this.client.setToken(this.config.env.MATTERMOST_TOKEN);
       } else {
-        throw new Error('No authentication method provided (accessToken or botUsername/botPassword)');
+        throw new Error('No authentication token provided (MATTERMOST_TOKEN required)');
       }
 
       // Test authentication by making a simple API call
@@ -119,8 +115,7 @@ export class RestClient extends BaseClient {
       
     } catch (error) {
       this.logger.error('Authentication failed', {
-        hasToken: !!this.config.accessToken,
-        hasCredentials: !!(this.config.botUsername && this.config.botPassword),
+        hasToken: !!this.config.env.MATTERMOST_TOKEN,
         error: error instanceof Error ? error.message : String(error)
       });
       throw this.createApiError(error, 'Authentication failed');
@@ -302,6 +297,128 @@ export class RestClient extends BaseClient {
   }
 
   /**
+   * Get the first team for the authenticated user (for backward compatibility)
+   */
+  async getTeam(): Promise<any> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Retrieving primary team for user');
+        const teams = await this.client.getMyTeams();
+        
+        if (teams.length === 0) {
+          throw new Error('No teams found for user');
+        }
+        
+        const primaryTeam = teams[0];
+        this.logger.debug('Primary team retrieved successfully', { 
+          teamId: primaryTeam.id,
+          teamName: primaryTeam.name
+        });
+        
+        return primaryTeam;
+      } catch (error) {
+        throw this.createApiError(error, 'Failed to get primary team');
+      }
+    }, 'getTeam');
+  }
+
+  /**
+   * Test the connection to the Mattermost server
+   */
+  async testConnection(): Promise<boolean> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Testing connection to Mattermost server');
+        
+        // Test connection by calling a simple API endpoint
+        await this.client.getMe();
+        
+        this.logger.debug('Connection test successful');
+        return true;
+      } catch (error) {
+        this.logger.warn('Connection test failed', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw this.createApiError(error, 'Connection test failed');
+      }
+    }, 'testConnection');
+  }
+
+  /**
+   * Get channel by name
+   */
+  async getChannelByName(teamId: string, channelName: string): Promise<any> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Retrieving channel by name', { teamId, channelName });
+        
+        const channel = await this.client.getChannelByName(teamId, channelName);
+        
+        this.logger.debug('Channel retrieved successfully', { 
+          channelId: channel.id,
+          channelName: channel.name,
+          channelType: channel.type
+        });
+        
+        return channel;
+      } catch (error) {
+        throw this.createApiError(error, `Failed to get channel by name: ${channelName}`);
+      }
+    }, `getChannelByName(${channelName})`);
+  }
+
+  /**
+   * Join a channel
+   */
+  async joinChannel(channelId: string): Promise<any> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Joining channel', { channelId });
+        
+        const membership = await this.client.addToChannel(this.botUser.id, channelId);
+        
+        this.logger.info('Successfully joined channel', { 
+          channelId,
+          userId: this.botUser.id
+        });
+        
+        return membership;
+      } catch (error) {
+        throw this.createApiError(error, `Failed to join channel: ${channelId}`);
+      }
+    }, `joinChannel(${channelId})`);
+  }
+
+  /**
+   * Get channels for team (wrapper around getChannels for backward compatibility)
+   */
+  async getChannelsForTeam(teamId?: string): Promise<any[]> {
+    return this.executeWithRetry(async () => {
+      try {
+        // If no teamId provided, get the primary team
+        let effectiveTeamId = teamId;
+        if (!teamId) {
+          const primaryTeam = await this.getTeam();
+          effectiveTeamId = primaryTeam.id;
+        }
+        
+        this.logger.debug('Retrieving channels for team', { teamId: effectiveTeamId });
+        
+        const channels = await this.getChannels(effectiveTeamId);
+        
+        this.logger.debug('Team channels retrieved successfully', { 
+          teamId: effectiveTeamId,
+          channelCount: channels.length 
+        });
+        
+        return channels;
+      } catch (error) {
+        throw this.createApiError(error, `Failed to get channels for team: ${teamId}`);
+      }
+    }, `getChannelsForTeam(${teamId})`);
+  }
+
+  /**
    * Upload a file to Mattermost
    */
   async uploadFile(
@@ -321,11 +438,7 @@ export class RestClient extends BaseClient {
         formData.append('files', file, filename);
         formData.append('channel_id', channelId);
         
-        const fileInfos = await this.client.uploadFile(
-          formData,
-          'files',
-          filename
-        );
+        const fileInfos = await this.client.uploadFile(formData);
         
         this.logger.info('File uploaded successfully', { 
           channelId, 
@@ -342,17 +455,25 @@ export class RestClient extends BaseClient {
 
   /**
    * Get file information
+   * Note: This method may not be available on all Mattermost instances
    */
   async getFileInfo(fileId: string): Promise<any> {
     return this.executeWithRetry(async () => {
       try {
         this.logger.debug('Retrieving file info', { fileId });
-        const fileInfo = await this.client.getFileInfo(fileId);
-        this.logger.debug('File info retrieved successfully', { 
-          fileId, 
-          filename: fileInfo.name 
-        });
-        return fileInfo;
+        
+        // Note: getFileInfo may not be available on all Client4 versions
+        // This is a fallback implementation
+        if (typeof (this.client as any).getFileInfo === 'function') {
+          const fileInfo = await (this.client as any).getFileInfo(fileId);
+          this.logger.debug('File info retrieved successfully', { 
+            fileId, 
+            filename: fileInfo.name 
+          });
+          return fileInfo;
+        } else {
+          throw new Error('getFileInfo method not available on this Mattermost client');
+        }
       } catch (error) {
         throw this.createApiError(error, 'Failed to get file info');
       }

@@ -238,7 +238,7 @@ export class MattermostService extends Service {
 
         // Test API availability
         try {
-            if (this.restClient?.isReady()) {
+            if (this.restClient?.isReady) {
                 await this.restClient.testConnection();
                 apiAvailable = true;
             }
@@ -350,7 +350,7 @@ export class MattermostService extends Service {
         }
 
         try {
-            const channel = await this.restClient.getChannelByName(channelName);
+            const channel = await this.restClient.getChannelByName(this.team!.id, channelName);
             await this.restClient.joinChannel(channel.id);
             
             // Send a greeting message

@@ -1,4 +1,4 @@
-import { Client4 } from 'mattermost-redux/client';
+import { Client4 } from '@mattermost/client';
 import { MattermostConfig } from '../../config';
 import { RateLimiter } from './rate-limiter';
 

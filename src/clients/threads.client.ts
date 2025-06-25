@@ -1,4 +1,4 @@
-import { Client4 } from 'mattermost-redux/client';
+import { Client4 } from '@mattermost/client';
 import { MattermostConfig } from '../config';
 import { BaseClient } from './core/base-client';
 
@@ -25,8 +25,7 @@ export interface ThreadContext {
 }
 
 /**
- * Dedicated client for managing thread operations in Mattermost
- * Extracted from RestClient for better modularity and maintainability
+ * Dedicated client for managing thread operations
  */
 export class ThreadsClient extends BaseClient {
   constructor(client: InstanceType<typeof Client4>, config: MattermostConfig, logger: any) {
@@ -67,7 +66,7 @@ export class ThreadsClient extends BaseClient {
         }
 
         // Get thread posts using the posts for channel method with filtering
-        const channelPosts = await this.client.getPostsForChannel(channelId, 0, maxMessages * 2);
+        const channelPosts = await (this.client as any).getPostsForChannel(channelId, 0, maxMessages * 2);
         
         if (!channelPosts || !channelPosts.posts) {
           this.logger.warn('No posts found in channel for thread context', { channelId, threadId });
@@ -90,8 +89,8 @@ export class ThreadsClient extends BaseClient {
         // Calculate thread statistics
         const participants = new Set(limitedPosts.map((post: any) => post.user_id));
         const lastActivity = limitedPosts.length > 0 ? 
-          new Date(limitedPosts[limitedPosts.length - 1].create_at) : 
-          new Date(rootPost.create_at);
+          new Date((limitedPosts[limitedPosts.length - 1] as any).create_at) : 
+          new Date((rootPost as any).create_at);
 
         const threadContext: ThreadContext = {
           posts: limitedPosts,
@@ -152,7 +151,7 @@ export class ThreadsClient extends BaseClient {
 
         // Fallback: Get posts from channel and filter
         if (threadPosts.length === 0) {
-          const channelPosts = await this.client.getPostsForChannel(channelId, 0, maxMessages * 2);
+          const channelPosts = await (this.client as any).getPostsForChannel(channelId, 0, maxMessages * 2);
           threadPosts = Object.values(channelPosts.posts || {})
             .filter((post: any) => post.id === threadId || post.root_id === threadId)
             .sort((a: any, b: any) => a.create_at - b.create_at);
@@ -240,9 +239,9 @@ export class ThreadsClient extends BaseClient {
       posts: [rootPost],
       messageCount: 1,
       participantCount: 1,
-      lastActivity: new Date(rootPost.create_at),
+      lastActivity: new Date((rootPost as any).create_at),
       rootPost,
-      isActive: this.isThreadActive(new Date(rootPost.create_at))
+      isActive: this.isThreadActive(new Date((rootPost as any).create_at))
     };
   }
 
@@ -262,7 +261,7 @@ export class ThreadsClient extends BaseClient {
         const posts = await this.getThreadPosts(threadId, channelId, { maxMessages: 50 });
         const participants = new Set(posts.map(post => post.user_id));
         const lastActivity = posts.length > 0 ? 
-          new Date(posts[posts.length - 1].create_at) : 
+          new Date((posts[posts.length - 1] as any).create_at) : 
           new Date();
 
         return {

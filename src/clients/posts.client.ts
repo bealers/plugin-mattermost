@@ -1,4 +1,4 @@
-import { Client4 } from 'mattermost-redux/client';
+import { Client4 } from '@mattermost/client';
 import { MattermostConfig } from '../config';
 import { BaseClient } from './core/base-client';
 
@@ -145,7 +145,7 @@ export class PostsClient extends BaseClient {
         } else if (before || after) {
           posts = await this.client.getPostsAfter(channelId, after || '', perPage);
         } else {
-          posts = await this.client.getPostsForChannel(channelId, page, perPage);
+          posts = await (this.client as any).getPostsForChannel(channelId, page, perPage);
         }
         
         if (!posts) {
