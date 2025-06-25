@@ -288,13 +288,13 @@ export class AttachmentManager {
   }
   
   /**
-   * Upload a file to Mattermost
+   * Upload a file to Mattermost and post a message with the attachment
    */
   async uploadFile(channelId: string, fileData: Buffer, fileName: string, postId?: string): Promise<string> {
     if (!this.isInitialized) {
       throw new Error('Attachment manager not initialized');
     }
-
+    
     try {
       this.runtime.logger.debug(`Uploading file`, {
         channelId,
@@ -303,24 +303,220 @@ export class AttachmentManager {
       });
       
       // Upload file to Mattermost
-      const fileInfo = await this.restClient.uploadFile(channelId, fileData, fileName);
+      const uploadResult = await this.restClient.uploadFile(channelId, fileData, fileName);
       
-      // Post message with file attachment
-      const message = `Here's the file: **${fileName}** (${this.formatFileSize(fileData.length)})`;
-      await this.restClient.createPost(channelId, message, { 
-        rootId: postId,
-        fileIds: [fileInfo.file_infos[0].id]
-      });
+      const fileId = uploadResult.file_infos[0].id;
       
       this.runtime.logger.info(`File uploaded successfully`, {
         channelId,
         fileName,
-        fileId: fileInfo.file_infos[0].id
+        fileId
       });
       
-      return fileInfo.file_infos[0].id;
+      return fileId;
     } catch (error) {
       this.runtime.logger.error(`Error uploading file: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate and upload a text file to Mattermost
+   */
+  async generateAndUploadTextFile(channelId: string, content: string, fileName: string, postId?: string): Promise<string> {
+    try {
+      this.runtime.logger.info('Generating and uploading text file', { 
+        fileName, 
+        contentLength: content.length,
+        channelId 
+      });
+      
+      // Create file buffer
+      const fileData = Buffer.from(content, 'utf-8');
+      
+      // Upload file
+      const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
+      
+      // Post message with file attachment
+      await this.restClient.createPost(channelId, `📄 Generated file: ${fileName}`, {
+        rootId: postId,
+        fileIds: [fileId]
+      });
+      
+      this.runtime.logger.info('Text file generated and uploaded successfully', { 
+        fileName, 
+        fileId 
+      });
+      
+      return fileId;
+    } catch (error) {
+      this.runtime.logger.error('Error generating and uploading text file', error, {
+        fileName,
+        contentLength: content.length,
+        channelId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate and upload a CSV file to Mattermost
+   */
+  async generateAndUploadCSV(channelId: string, data: any[], fileName: string, postId?: string): Promise<string> {
+    try {
+      this.runtime.logger.info('Generating and uploading CSV file', { 
+        fileName, 
+        rowCount: data.length,
+        channelId 
+      });
+      
+      // Check if data is valid
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('Invalid data for CSV generation: data must be a non-empty array');
+      }
+      
+      // Get headers from first row
+      const headers = Object.keys(data[0]);
+      if (headers.length === 0) {
+        throw new Error('Invalid data for CSV generation: first row must have at least one property');
+      }
+      
+      // Generate CSV content
+      let csvContent = headers.join(',') + '\n';
+      
+      for (const row of data) {
+        const values = headers.map(header => {
+          const value = row[header];
+          // Handle null/undefined values
+          if (value === null || value === undefined) {
+            return '';
+          }
+          // Handle values with commas, quotes, or newlines by quoting and escaping
+          const strValue = String(value);
+          if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+            return `"${strValue.replace(/"/g, '""')}"`;
+          }
+          return strValue;
+        });
+        csvContent += values.join(',') + '\n';
+      }
+      
+      // Create file buffer
+      const fileData = Buffer.from(csvContent, 'utf-8');
+      
+      // Upload file
+      const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
+      
+      // Post message with file attachment and summary
+      const summary = `📊 Generated CSV file: ${fileName}\n- ${data.length} rows\n- ${headers.length} columns: ${headers.join(', ')}`;
+      await this.restClient.createPost(channelId, summary, {
+        rootId: postId,
+        fileIds: [fileId]
+      });
+      
+      this.runtime.logger.info('CSV file generated and uploaded successfully', { 
+        fileName, 
+        fileId,
+        rowCount: data.length,
+        columnCount: headers.length
+      });
+      
+      return fileId;
+    } catch (error) {
+      this.runtime.logger.error('Error generating and uploading CSV file', error, {
+        fileName,
+        rowCount: data?.length,
+        channelId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate and upload a markdown report to Mattermost
+   */
+  async generateAndUploadMarkdownReport(channelId: string, title: string, content: string, postId?: string): Promise<string> {
+    try {
+      this.runtime.logger.info('Generating and uploading markdown report', { 
+        title, 
+        contentLength: content.length,
+        channelId 
+      });
+      
+      // Generate markdown content with proper formatting
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const markdown = `# ${title}\n\n*Generated on: ${new Date().toLocaleString()}*\n\n${content}`;
+      
+      // Create file name
+      const fileName = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${timestamp}.md`;
+      
+      // Create file buffer
+      const fileData = Buffer.from(markdown, 'utf-8');
+      
+      // Upload file
+      const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
+      
+      // Post message with file attachment
+      const summary = `📝 Generated markdown report: **${title}**\nFile: ${fileName}`;
+      await this.restClient.createPost(channelId, summary, {
+        rootId: postId,
+        fileIds: [fileId]
+      });
+      
+      this.runtime.logger.info('Markdown report generated and uploaded successfully', { 
+        title,
+        fileName,
+        fileId 
+      });
+      
+      return fileId;
+    } catch (error) {
+      this.runtime.logger.error('Error generating and uploading markdown report', error, {
+        title,
+        contentLength: content.length,
+        channelId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate and upload a JSON file to Mattermost
+   */
+  async generateAndUploadJSON(channelId: string, data: any, fileName: string, postId?: string): Promise<string> {
+    try {
+      this.runtime.logger.info('Generating and uploading JSON file', { 
+        fileName, 
+        channelId 
+      });
+      
+      // Convert data to formatted JSON
+      const jsonContent = JSON.stringify(data, null, 2);
+      
+      // Create file buffer
+      const fileData = Buffer.from(jsonContent, 'utf-8');
+      
+      // Upload file
+      const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
+      
+      // Post message with file attachment
+      const summary = `🔧 Generated JSON file: ${fileName}\nSize: ${this.formatFileSize(fileData.length)}`;
+      await this.restClient.createPost(channelId, summary, {
+        rootId: postId,
+        fileIds: [fileId]
+      });
+      
+      this.runtime.logger.info('JSON file generated and uploaded successfully', { 
+        fileName, 
+        fileId 
+      });
+      
+      return fileId;
+    } catch (error) {
+      this.runtime.logger.error('Error generating and uploading JSON file', error, {
+        fileName,
+        channelId
+      });
       throw error;
     }
   }

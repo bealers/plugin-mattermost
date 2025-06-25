@@ -952,6 +952,272 @@ export class MessageManager {
   }
 
   /**
+   * Handle file generation commands (!generate, !report, !file)
+   * @private
+   */
+  private async handleFileGenerationCommand(post: MattermostPost, eventData: WebSocketPostedEvent): Promise<void> {
+    const message = post.message.toLowerCase();
+    const channelId = post.channel_id;
+    const rootId = post.root_id || post.id;
+
+    this.logger.info('Processing file generation command', {
+      postId: post.id,
+      channelId,
+      command: message.substring(0, 100)
+    });
+
+    // Send processing message
+    await this.restClient.createPost(
+      channelId,
+      `🔄 Processing your file generation request...`,
+      { rootId }
+    );
+
+    // Parse command parameters
+    const commandParams = this.parseFileGenerationCommand(message);
+    
+    this.logger.debug('Parsed command parameters', commandParams);
+
+    try {
+      switch (commandParams.type) {
+        case 'csv':
+          await this.generateCSVFile(channelId, rootId, commandParams);
+          break;
+        case 'markdown':
+        case 'md':
+          await this.generateMarkdownFile(channelId, rootId, commandParams);
+          break;
+        case 'json':
+          await this.generateJSONFile(channelId, rootId, commandParams);
+          break;
+        case 'text':
+        case 'txt':
+        default:
+          await this.generateTextFile(channelId, rootId, commandParams);
+          break;
+      }
+
+      this.logger.info('File generation command completed successfully', {
+        postId: post.id,
+        type: commandParams.type,
+        filename: commandParams.filename
+      });
+
+    } catch (error) {
+      this.logger.error('Error in file generation', error, commandParams);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse file generation command to extract parameters
+   * @private
+   */
+  private parseFileGenerationCommand(message: string): {
+    type: string;
+    title: string;
+    filename: string;
+    content?: string;
+    sampleData?: boolean;
+  } {
+    // Extract file type
+    const typeMatch = message.match(/(?:type:|format:|as\s+)([a-z]+)/i);
+    const type = typeMatch?.[1]?.toLowerCase() || 'text';
+
+    // Extract title
+    const titleMatch = message.match(/(?:title:|name:)\s*["']([^"']+)["']/i) || 
+                      message.match(/(?:title:|name:)\s*([a-zA-Z0-9\s-_]+?)(?:\s|$)/i);
+    const title = titleMatch?.[1]?.trim() || 'Generated Report';
+
+    // Extract custom content if provided
+    const contentMatch = message.match(/(?:content:|with:)\s*["']([^"']+)["']/i);
+    const content = contentMatch?.[1];
+
+    // Check if sample data is requested
+    const sampleData = message.includes('sample') || message.includes('example') || message.includes('demo');
+
+    // Generate filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const cleanTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const extension = type === 'markdown' || type === 'md' ? 'md' : 
+                     type === 'csv' ? 'csv' : 
+                     type === 'json' ? 'json' : 'txt';
+    const filename = `${cleanTitle}-${timestamp}.${extension}`;
+
+    return {
+      type,
+      title,
+      filename,
+      content,
+      sampleData
+    };
+  }
+
+  /**
+   * Generate and upload a CSV file
+   * @private
+   */
+  private async generateCSVFile(channelId: string, rootId: string, params: any): Promise<void> {
+    // Generate sample CSV data or use provided data
+    const data = params.sampleData ? [
+      { id: 1, name: 'Alice Johnson', department: 'Engineering', salary: 95000, joinDate: '2022-01-15' },
+      { id: 2, name: 'Bob Smith', department: 'Marketing', salary: 75000, joinDate: '2021-08-10' },
+      { id: 3, name: 'Carol Davis', department: 'Sales', salary: 82000, joinDate: '2023-03-22' },
+      { id: 4, name: 'David Wilson', department: 'Engineering', salary: 98000, joinDate: '2020-11-05' },
+      { id: 5, name: 'Eva Brown', department: 'HR', salary: 68000, joinDate: '2022-09-14' }
+    ] : [
+      { item: 'Sample Item 1', value: 100, category: 'Category A' },
+      { item: 'Sample Item 2', value: 200, category: 'Category B' },
+      { item: 'Sample Item 3', value: 150, category: 'Category A' }
+    ];
+
+    await this.attachmentManager.generateAndUploadCSV(
+      channelId,
+      data,
+      params.filename,
+      rootId
+    );
+  }
+
+  /**
+   * Generate and upload a markdown file
+   * @private
+   */
+  private async generateMarkdownFile(channelId: string, rootId: string, params: any): Promise<void> {
+    const content = params.content || this.generateSampleMarkdownContent(params.title);
+    
+    await this.attachmentManager.generateAndUploadMarkdownReport(
+      channelId,
+      params.title,
+      content,
+      rootId
+    );
+  }
+
+  /**
+   * Generate and upload a JSON file
+   * @private
+   */
+  private async generateJSONFile(channelId: string, rootId: string, params: any): Promise<void> {
+    const data = params.sampleData ? {
+      project: params.title,
+      metadata: {
+        version: '1.0.0',
+        created: new Date().toISOString(),
+        author: 'Mattermost ElizaOS Bot'
+      },
+      data: [
+        { id: 1, value: 'Sample data 1', status: 'active' },
+        { id: 2, value: 'Sample data 2', status: 'inactive' },
+        { id: 3, value: 'Sample data 3', status: 'pending' }
+      ],
+      summary: {
+        totalItems: 3,
+        activeItems: 1,
+        lastUpdated: new Date().toISOString()
+      }
+    } : {
+      title: params.title,
+      content: params.content || 'Sample JSON content',
+      generated: new Date().toISOString()
+    };
+
+    await this.attachmentManager.generateAndUploadJSON(
+      channelId,
+      data,
+      params.filename,
+      rootId
+    );
+  }
+
+  /**
+   * Generate and upload a text file
+   * @private
+   */
+  private async generateTextFile(channelId: string, rootId: string, params: any): Promise<void> {
+    const content = params.content || this.generateSampleTextContent(params.title);
+    
+    await this.attachmentManager.generateAndUploadTextFile(
+      channelId,
+      content,
+      params.filename,
+      rootId
+    );
+  }
+
+  /**
+   * Generate sample markdown content
+   * @private
+   */
+  private generateSampleMarkdownContent(title: string): string {
+    return `## Introduction
+
+This is a sample ${title} generated by the Mattermost ElizaOS Service.
+
+## Overview
+
+This report demonstrates the file generation capabilities of the bot. You can customize the content by specifying:
+- File type (markdown, csv, json, text)
+- Custom title
+- Custom content
+
+## Features
+
+- **Automated File Generation**: Create files on demand
+- **Multiple Formats**: Support for various file types
+- **Custom Content**: Specify your own content or use samples
+- **Secure Upload**: Files are uploaded directly to Mattermost
+
+## Usage Examples
+
+\`\`\`
+!generate type:markdown title:"My Report" 
+!generate type:csv title:"Employee Data" sample
+!generate type:json title:"Config File" 
+!file type:text title:"Notes" content:"Custom content here"
+\`\`\`
+
+## Conclusion
+
+This feature enables seamless file creation and sharing within your Mattermost workspace.
+
+---
+*Generated on: ${new Date().toLocaleString()}*`;
+  }
+
+  /**
+   * Generate sample text content
+   * @private
+   */
+  private generateSampleTextContent(title: string): string {
+    return `${title}
+${'='.repeat(title.length)}
+
+Generated on: ${new Date().toLocaleString()}
+
+This is a sample text file created by the Mattermost ElizaOS Service.
+
+FEATURES:
+- Automated file generation
+- Multiple file format support
+- Custom content specification
+- Direct Mattermost integration
+
+USAGE:
+You can generate files using commands like:
+- !generate type:text title:"My File"
+- !report type:csv title:"Data Report" sample
+- !file type:markdown title:"Documentation"
+
+For custom content, use:
+- !generate title:"My File" content:"Your custom content here"
+
+This demonstrates the bot's ability to create and upload files based on user requests.
+
+END OF FILE`;
+  }
+
+  /**
    * Determine if a message should be processed based on filtering rules
    * @private
    */
@@ -1050,7 +1316,7 @@ export class MessageManager {
   }
 
   /**
-   * Route a processed message with comprehensive error handling and resilience
+   * Route messages to appropriate handlers with comprehensive error handling and resilience
    * Enhanced with full thread-aware processing
    * @private
    */
@@ -1100,6 +1366,40 @@ export class MessageManager {
             postId: post.id,
             fileIds: post.file_ids
           });
+        }
+      }
+
+      // Check for file generation commands
+      if (post.message.match(/^!generate|^!report|^!file/i)) {
+        try {
+          this.logger.info('Processing file generation command', {
+            postId: post.id,
+            command: post.message.substring(0, 50)
+          });
+
+          await this.handleFileGenerationCommand(post, eventData);
+          
+          // Skip normal AI processing for file generation commands
+          return;
+          
+        } catch (error) {
+          this.logger.error('Error handling file generation command', error, {
+            postId: post.id,
+            command: post.message.substring(0, 50)
+          });
+          
+          // Send error message to user
+          const errorMessage = `Error generating file: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          const fallbackRootId = post.root_id || undefined;
+          
+          try {
+            await this.postResponse(post.channel_id, errorMessage, fallbackRootId);
+          } catch (postError) {
+            this.logger.error('Failed to send file generation error message', postError);
+          }
+          
+          // Skip normal AI processing after error
+          return;
         }
       }
 
