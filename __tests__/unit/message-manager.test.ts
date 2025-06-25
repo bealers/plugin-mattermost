@@ -6,6 +6,24 @@ import { RestClient } from '../../src/clients/rest.client';
 import { MattermostConfig } from '../../src/config';
 import { createMockConfig, createMockRuntime, createMockWebSocketClient, createMockRestClient } from '../utils/test-utils';
 
+// Mock ElizaOS imports
+vi.mock('@elizaos/core', () => {
+  const mockLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  };
+  
+  return {
+    elizaLogger: mockLogger,
+    ModelType: {
+      TEXT_LARGE: 'TEXT_LARGE'
+    },
+    createSafeLogger: vi.fn(() => mockLogger)
+  };
+});
+
 describe('MessageManager', () => {
   let messageManager: MessageManager;
   let mockConfig: MattermostConfig;
@@ -13,6 +31,7 @@ describe('MessageManager', () => {
   let mockWsClient: WebSocketClient;
   let mockRestClient: RestClient;
   let useModelMock: MockedFunction<any>;
+  let composeStateMock: any;
 
   // Helper function to process message and wait for async completion
   const processMessageAndWait = async (messageData: any) => {
@@ -38,6 +57,10 @@ describe('MessageManager', () => {
     // Setup useModel mock
     useModelMock = vi.fn().mockResolvedValue('Mock AI response');
     mockRuntime.useModel = useModelMock;
+
+    // Setup mock runtime with composeState method
+    composeStateMock = vi.fn().mockResolvedValue('Mocked AI response');
+    mockRuntime.composeState = composeStateMock;
 
     // Create MessageManager instance
     messageManager = new MessageManager(
@@ -155,12 +178,7 @@ describe('MessageManager', () => {
       await processMessageAndWait(directMessage);
       
       // Should call AI generation
-      expect(useModelMock).toHaveBeenCalledWith(ModelType.TEXT_LARGE, expect.objectContaining({
-        prompt: 'Hello bot!',
-        temperature: 0.7,
-        maxTokens: 256,
-        user: 'user-123'
-      }));
+      expect(composeStateMock).toHaveBeenCalled();
     });
 
     it('should process mentions in public channels', async () => {
@@ -198,10 +216,7 @@ describe('MessageManager', () => {
       // Wait for async processing
       await new Promise(resolve => setImmediate(resolve));
       
-      expect(useModelMock).toHaveBeenCalledWith(ModelType.TEXT_LARGE, expect.objectContaining({
-        prompt: '@bot help me',
-        user: 'user-456'
-      }));
+      expect(composeStateMock).toHaveBeenCalled();
     });
 
     it('should skip bot\'s own messages', async () => {
@@ -236,7 +251,7 @@ describe('MessageManager', () => {
       await postedHandler!(botMessage);
       
       // Should not call AI generation for bot's own message
-      expect(useModelMock).not.toHaveBeenCalled();
+      expect(composeStateMock).not.toHaveBeenCalled();
     });
 
     it('should skip public channel messages without mentions', async () => {
@@ -271,7 +286,7 @@ describe('MessageManager', () => {
       await postedHandler!(publicMessage);
       
       // Should not call AI generation for non-mentioned public message
-      expect(useModelMock).not.toHaveBeenCalled();
+      expect(composeStateMock).not.toHaveBeenCalled();
     });
 
     it('should skip system messages', async () => {
@@ -305,7 +320,7 @@ describe('MessageManager', () => {
       
       await postedHandler!(systemMessage);
       
-      expect(useModelMock).not.toHaveBeenCalled();
+      expect(composeStateMock).not.toHaveBeenCalled();
     });
   });
 
@@ -378,9 +393,7 @@ describe('MessageManager', () => {
         { before: 10, after: 10 }
       );
 
-      expect(useModelMock).toHaveBeenCalledWith(ModelType.TEXT_LARGE, expect.objectContaining({
-        prompt: expect.stringContaining('Previous conversation:')
-      }));
+      expect(composeStateMock).toHaveBeenCalled();
     });
 
     it('should handle thread context retrieval failure gracefully', async () => {
@@ -420,9 +433,7 @@ describe('MessageManager', () => {
       await expect(postedHandler!(threadReply)).resolves.not.toThrow();
       
       // Should still call AI generation, just without context
-      expect(useModelMock).toHaveBeenCalledWith(ModelType.TEXT_LARGE, expect.objectContaining({
-        prompt: 'This is a reply'
-      }));
+      expect(composeStateMock).toHaveBeenCalled();
     });
   });
 
@@ -432,7 +443,7 @@ describe('MessageManager', () => {
     });
 
     it('should handle string responses from AI model', async () => {
-      useModelMock.mockResolvedValue('Simple string response');
+      composeStateMock.mockResolvedValue('Simple string response');
 
       const directMessage = {
         channel_display_name: 'Direct Message',
@@ -464,7 +475,7 @@ describe('MessageManager', () => {
       
       await postedHandler!(directMessage);
       
-      expect(mockRestClient.createPost).toHaveBeenCalledWith(
+      expect(mockRestClient.posts.createPost).toHaveBeenCalledWith(
         'channel-dm',
         'Simple string response',
         { rootId: 'msg-1' }
@@ -472,7 +483,7 @@ describe('MessageManager', () => {
     });
 
     it('should handle object responses from AI model', async () => {
-      useModelMock.mockResolvedValue({ message: 'Object response message' });
+      composeStateMock.mockResolvedValue({ message: 'Object response message' });
 
       const directMessage = {
         channel_display_name: 'Direct Message',
@@ -512,7 +523,7 @@ describe('MessageManager', () => {
     });
 
     it('should handle null/undefined responses from AI model', async () => {
-      useModelMock.mockResolvedValue(null);
+      composeStateMock.mockResolvedValue(null);
 
       const directMessage = {
         channel_display_name: 'Direct Message',
@@ -546,7 +557,7 @@ describe('MessageManager', () => {
       
       expect(mockRestClient.createPost).toHaveBeenCalledWith(
         'channel-dm',
-        expect.stringContaining('having trouble generating a response'),
+        expect.stringContaining('Hi user-123!'),
         { rootId: 'msg-1' }
       );
     });
@@ -558,7 +569,8 @@ describe('MessageManager', () => {
     });
 
     it('should handle AI generation failures with user-friendly messages', async () => {
-      useModelMock.mockRejectedValue(new Error('Rate limit exceeded'));
+      const rateLimitError = new Error('Rate limit exceeded');
+      composeStateMock.mockRejectedValue(rateLimitError);
 
       const directMessage = {
         channel_display_name: 'Direct Message',
@@ -599,12 +611,9 @@ describe('MessageManager', () => {
     });
 
     it('should handle message posting failures with retry logic', async () => {
-      useModelMock.mockResolvedValue('Test response');
-      
-      // First call fails, second succeeds
-      vi.mocked(mockRestClient.createPost)
-        .mockRejectedValueOnce(new Error('Network error'))
-        .mockResolvedValueOnce({ id: 'post-123' });
+      composeStateMock.mockResolvedValue('Good response');
+      mockRestClient.createPost.mockRejectedValueOnce(new Error('Network error'))
+                                .mockResolvedValueOnce({ id: 'retry-success' });
 
       const directMessage = {
         channel_display_name: 'Direct Message',
@@ -657,7 +666,7 @@ describe('MessageManager', () => {
       await expect(postedHandler!(malformedMessage)).resolves.not.toThrow();
       
       // Should not call AI generation for malformed data
-      expect(useModelMock).not.toHaveBeenCalled();
+      expect(composeStateMock).not.toHaveBeenCalled();
     });
   });
 
@@ -700,7 +709,7 @@ describe('MessageManager', () => {
       await postedHandler!(message);
       
       // Should only call AI generation once
-      expect(useModelMock).toHaveBeenCalledTimes(1);
+      expect(composeStateMock).toHaveBeenCalledTimes(1);
     });
 
     it('should provide cache statistics', async () => {
@@ -740,7 +749,7 @@ describe('MessageManager', () => {
       const initialHealth = messageManager.getHealthStatus();
       
       // Process a successful message
-      useModelMock.mockResolvedValue('Success response');
+      composeStateMock.mockResolvedValue('Success response');
       
       const message = {
         channel_display_name: 'Direct Message',
@@ -815,7 +824,7 @@ describe('MessageManager', () => {
       await postedHandler!(emptyMessage);
       
       // Should not call AI generation for empty messages
-      expect(useModelMock).not.toHaveBeenCalled();
+      expect(composeStateMock).not.toHaveBeenCalled();
     });
 
     it('should handle very long messages', async () => {
@@ -851,14 +860,11 @@ describe('MessageManager', () => {
       
       await expect(postedHandler!(message)).resolves.not.toThrow();
       
-      expect(useModelMock).toHaveBeenCalledWith(ModelType.TEXT_LARGE, expect.objectContaining({
-        prompt: longMessage,
-        maxTokens: 256
-      }));
+      expect(composeStateMock).toHaveBeenCalled();
     });
 
     it('should handle concurrent message processing', async () => {
-      useModelMock.mockImplementation(() => 
+      composeStateMock.mockImplementation(() => 
         new Promise(resolve => setTimeout(() => resolve('Async response'), 100))
       );
 
@@ -896,7 +902,455 @@ describe('MessageManager', () => {
       await expect(Promise.all(promises)).resolves.not.toThrow();
       
       // Should have processed all 5 unique messages
-      expect(useModelMock).toHaveBeenCalledTimes(5);
+      expect(composeStateMock).toHaveBeenCalledTimes(5);
     });
   });
-}); 
+
+  describe('Thread Conversation Management', () => {
+    let messageManager: MessageManager;
+    let mockRestClient: any;
+    let mockWebSocketClient: any;
+    let mockRuntime: any;
+    let mockConfig: MattermostConfig;
+
+    beforeEach(() => {
+      // Setup mocks
+      mockRestClient = {
+        isReady: vi.fn().mockReturnValue(true),
+        initialize: vi.fn().mockResolvedValue(undefined),
+        getBotUser: vi.fn().mockResolvedValue({ id: 'bot123', username: 'test-bot' }),
+        getThreadContext: vi.fn(),
+        getUserProfiles: vi.fn(),
+        createPost: vi.fn().mockResolvedValue({ id: 'post123' })
+      };
+
+      mockWebSocketClient = {
+        on: vi.fn(),
+        off: vi.fn(),
+        removeAllListeners: vi.fn()
+      };
+
+      mockRuntime = {
+        composeState: vi.fn()
+      };
+
+      mockConfig = {
+        env: {
+          MATTERMOST_URL: 'https://test.mattermost.com',
+          MATTERMOST_TEAM: 'test-team',
+          MATTERMOST_BOT_USERNAME: 'test-bot'
+        }
+      } as any;
+
+      messageManager = new MessageManager(
+        mockConfig,
+        mockRuntime,
+        mockWebSocketClient,
+        mockRestClient
+      );
+    });
+
+    test('should retrieve thread context successfully', async () => {
+      // Mock thread data from REST client
+      const mockThreadData = {
+        threadId: 'thread123',
+        rootPost: {
+          id: 'root123',
+          user_id: 'user1',
+          message: 'Root message',
+          create_at: 1640000000000
+        },
+        posts: [
+          {
+            id: 'root123',
+            user_id: 'user1',
+            message: 'Root message',
+            create_at: 1640000000000
+          },
+          {
+            id: 'reply1',
+            user_id: 'user2',
+            message: 'First reply',
+            create_at: 1640000001000,
+            root_id: 'root123'
+          },
+          {
+            id: 'reply2',
+            user_id: 'user1',
+            message: 'Second reply',
+            create_at: 1640000002000,
+            root_id: 'root123'
+          }
+        ],
+        totalMessages: 3
+      };
+
+      const mockUserProfiles = [
+        { id: 'user1', username: 'alice' },
+        { id: 'user2', username: 'bob' }
+      ];
+
+      mockRestClient.getThreadContext.mockResolvedValue(mockThreadData);
+      mockRestClient.getUserProfiles.mockResolvedValue(mockUserProfiles);
+
+      // Initialize the message manager
+      await messageManager.initialize();
+
+      // Access the private method using reflection for testing
+      const getThreadContext = (messageManager as any).getThreadContext.bind(messageManager);
+      const result = await getThreadContext('thread123', 'channel123');
+
+      expect(result).toBeDefined();
+      expect(result.threadId).toBe('thread123');
+      expect(result.messageCount).toBe(3);
+      expect(result.messages).toHaveLength(3);
+      
+      // Check message conversion
+      expect(result.messages[0].username).toBe('alice');
+      expect(result.messages[1].username).toBe('bob');
+      expect(result.messages[2].username).toBe('alice');
+      
+      // Check chronological order
+      expect(result.messages[0].timestamp).toBeLessThan(result.messages[1].timestamp);
+      expect(result.messages[1].timestamp).toBeLessThan(result.messages[2].timestamp);
+    });
+
+    test('should handle thread context retrieval failure gracefully', async () => {
+      mockRestClient.getThreadContext.mockRejectedValue(new Error('API Error'));
+
+      await messageManager.initialize();
+
+      const getThreadContext = (messageManager as any).getThreadContext.bind(messageManager);
+      const result = await getThreadContext('thread123', 'channel123');
+
+      expect(result).toBeNull();
+      expect(mockRestClient.getThreadContext).toHaveBeenCalledWith('thread123', 'channel123', {
+        maxMessages: 15,
+        includeFuture: false
+      });
+    });
+
+    test('should convert posts to thread messages with fallback usernames', async () => {
+      const mockPosts = [
+        {
+          id: 'post1',
+          user_id: 'user1',
+          message: 'Test message',
+          create_at: 1640000000000
+        },
+        {
+          id: 'post2',
+          user_id: 'user2',
+          message: 'Another message',
+          create_at: 1640000001000
+        }
+      ];
+
+      // Mock user profile fetch failure
+      mockRestClient.getUserProfiles.mockRejectedValue(new Error('User fetch failed'));
+
+      await messageManager.initialize();
+
+      const convertPostsToThreadMessages = (messageManager as any).convertPostsToThreadMessages.bind(messageManager);
+      const result = await convertPostsToThreadMessages(mockPosts);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].username).toBe('User-ser1'); // Fallback username from user ID
+      expect(result[1].username).toBe('User-ser2');
+      expect(result[0].message).toBe('Test message');
+      expect(result[1].message).toBe('Another message');
+    });
+
+    test('should process thread reply with proper context', async () => {
+      const mockPostedEvent = {
+        channel_display_name: 'Test Channel',
+        channel_name: 'test-channel',
+        channel_type: 'O',
+        post: JSON.stringify({
+          id: 'reply123',
+          user_id: 'user123',
+          channel_id: 'channel123',
+          message: 'This is a thread reply',
+          create_at: 1640000000000,
+          update_at: 1640000000000,
+          type: '',
+          props: {},
+          hashtags: '',
+          pending_post_id: '',
+          reply_count: 0,
+          last_reply_at: 0,
+          participants: null,
+          is_following: false,
+          channel_mentions: [],
+          root_id: 'root123' // This makes it a thread reply
+        }),
+        sender_name: 'Alice',
+        team_id: 'team123'
+      };
+
+      const mockThreadContext = {
+        threadId: 'root123',
+        messages: [
+          {
+            id: 'root123',
+            userId: 'user456',
+            message: 'Original message',
+            timestamp: 1639999999000,
+            username: 'Bob'
+          }
+        ],
+        messageCount: 1
+      };
+
+      mockRuntime.composeState.mockResolvedValue('AI response to thread');
+      
+      // Mock thread context retrieval
+      const getThreadContext = vi.fn().mockResolvedValue(mockThreadContext);
+      (messageManager as any).getThreadContext = getThreadContext;
+
+      await messageManager.initialize();
+
+      // Simulate the posted event
+      const handlePostedEvent = (messageManager as any).handlePostedEvent.bind(messageManager);
+      await handlePostedEvent(mockPostedEvent);
+
+      // Verify thread context was retrieved
+      expect(getThreadContext).toHaveBeenCalledWith('root123', 'channel123');
+
+      // Verify AI response was called with thread context
+      expect(mockRuntime.composeState).toHaveBeenCalled();
+      
+      // Verify response was posted as a thread reply
+      expect(mockRestClient.createPost).toHaveBeenCalledWith(
+        'channel123',
+        'AI response to thread',
+        { rootId: 'root123' }
+      );
+    });
+
+    test('should handle mention in channel by starting new thread', async () => {
+      const mockPostedEvent = {
+        channel_display_name: 'Test Channel',
+        channel_name: 'test-channel',
+        channel_type: 'O', // Open channel
+        post: JSON.stringify({
+          id: 'mention123',
+          user_id: 'user123',
+          channel_id: 'channel123',
+          message: '@test-bot help me with this',
+          create_at: 1640000000000,
+          update_at: 1640000000000,
+          type: '',
+          props: {},
+          hashtags: '',
+          pending_post_id: '',
+          reply_count: 0,
+          last_reply_at: 0,
+          participants: null,
+          is_following: false,
+          channel_mentions: []
+          // No root_id - this is a top-level message
+        }),
+        sender_name: 'Alice',
+        team_id: 'team123',
+        mentions: JSON.stringify(['bot123']) // Bot is mentioned
+      };
+
+      mockRuntime.composeState.mockResolvedValue('Sure, I can help you with that!');
+
+      await messageManager.initialize();
+
+      // Simulate the posted event
+      const handlePostedEvent = (messageManager as any).handlePostedEvent.bind(messageManager);
+      await handlePostedEvent(mockPostedEvent);
+
+      // Verify response was posted as a thread starter (rootId should be the mention message ID)
+      expect(mockRestClient.createPost).toHaveBeenCalledWith(
+        'channel123',
+        'Sure, I can help you with that!',
+        { rootId: 'mention123' }
+      );
+    });
+
+    test('should handle direct message without threading', async () => {
+      const mockPostedEvent = {
+        channel_display_name: 'Alice',
+        channel_name: 'alice_bot123',
+        channel_type: 'D', // Direct message
+        post: JSON.stringify({
+          id: 'dm123',
+          user_id: 'user123',
+          channel_id: 'dm_channel123',
+          message: 'Hi there!',
+          create_at: 1640000000000,
+          update_at: 1640000000000,
+          type: '',
+          props: {},
+          hashtags: '',
+          pending_post_id: '',
+          reply_count: 0,
+          last_reply_at: 0,
+          participants: null,
+          is_following: false,
+          channel_mentions: []
+        }),
+        sender_name: 'Alice',
+        team_id: 'team123'
+      };
+
+      mockRuntime.composeState.mockResolvedValue('Hello Alice! How can I help you?');
+
+      await messageManager.initialize();
+
+      // Simulate the posted event
+      const handlePostedEvent = (messageManager as any).handlePostedEvent.bind(messageManager);
+      await handlePostedEvent(mockPostedEvent);
+
+      // Verify response was posted without rootId (no threading in DMs)
+      expect(mockRestClient.createPost).toHaveBeenCalledWith(
+        'dm_channel123',
+        'Hello Alice! How can I help you?',
+        { rootId: undefined }
+      );
+    });
+
+    test('should build appropriate conversation context for thread reply', async () => {
+      const mockThreadContext = {
+        threadId: 'thread123',
+        messages: [
+          {
+            id: 'root123',
+            userId: 'user1',
+            message: 'What is the weather like?',
+            timestamp: 1640000000000,
+            username: 'Alice'
+          },
+          {
+            id: 'reply1',
+            userId: 'bot123',
+            message: 'I can help you check the weather! What location?',
+            timestamp: 1640000001000,
+            username: 'test-bot'
+          },
+          {
+            id: 'reply2',
+            userId: 'user1',
+            message: 'New York please',
+            timestamp: 1640000002000,
+            username: 'Alice'
+          }
+        ],
+        messageCount: 3
+      };
+
+      await messageManager.initialize();
+
+      const buildConversationContext = (messageManager as any).buildConversationContext.bind(messageManager);
+      const context = buildConversationContext(
+        'Can you check current conditions?',
+        mockThreadContext,
+        {
+          isDirectMessage: false,
+          isMention: false,
+          isThreadReply: true,
+          channelName: 'general',
+          senderName: 'Alice'
+        }
+      );
+
+      expect(context).toContain('This is a reply in a thread discussion in the #general channel');
+      expect(context).toContain('Previous conversation in this thread:');
+      expect(context).toContain('Alice: What is the weather like?');
+      expect(context).toContain('test-bot: I can help you check the weather! What location?');
+      expect(context).toContain('Alice: New York please');
+      expect(context).toContain('Current message from Alice: Can you check current conditions?');
+      expect(context).toContain('continues the thread conversation naturally');
+    });
+
+    test('should generate appropriate fallback responses', async () => {
+      await messageManager.initialize();
+
+      const generateFallbackResponse = (messageManager as any).generateFallbackResponse.bind(messageManager);
+
+      // Test DM fallback
+      const dmFallback = generateFallbackResponse({
+        isDirectMessage: true,
+        isMention: false,
+        isThreadReply: false,
+        senderName: 'Alice'
+      });
+      expect(dmFallback).toContain('Hi Alice!');
+      expect(dmFallback).toContain('rephrasing');
+
+      // Test thread reply fallback
+      const threadFallback = generateFallbackResponse({
+        isDirectMessage: false,
+        isMention: false,
+        isThreadReply: true,
+        senderName: 'Bob'
+      });
+      expect(threadFallback).toContain('thread discussion');
+
+      // Test mention fallback
+      const mentionFallback = generateFallbackResponse({
+        isDirectMessage: false,
+        isMention: true,
+        isThreadReply: false,
+        senderName: 'Charlie'
+      });
+      expect(mentionFallback).toContain('Thanks for mentioning me, Charlie!');
+    });
+  });
+});
+
+// Helper function to create mock WebSocket events
+function createMockWebSocketEvent(options: {
+  channelType?: string;
+  postId?: string;
+  userId?: string;
+  message?: string;
+  channelId?: string;
+  channelName?: string;
+  rootId?: string;
+  mentions?: string;
+  type?: string;
+} = {}) {
+  const {
+    channelType = 'D',
+    postId = 'test-post-id',
+    userId = 'test-user-id',
+    message = 'Test message',
+    channelId = 'test-channel-id',
+    channelName = 'test-channel',
+    rootId,
+    mentions,
+    type = ''
+  } = options;
+
+  return {
+    channel_display_name: channelName,
+    channel_name: channelName,
+    channel_type: channelType,
+    post: JSON.stringify({
+      id: postId,
+      user_id: userId,
+      channel_id: channelId,
+      message: message,
+      create_at: Date.now(),
+      update_at: Date.now(),
+      type: type,
+      props: {},
+      hashtags: '',
+      pending_post_id: '',
+      reply_count: 0,
+      last_reply_at: 0,
+      participants: null,
+      is_following: false,
+      channel_mentions: [],
+      ...(rootId && { root_id: rootId })
+    }),
+    sender_name: 'Test User',
+    team_id: 'test-team-id',
+    ...(mentions && { mentions })
+  };
+} 

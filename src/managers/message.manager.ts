@@ -2,7 +2,7 @@ import { IAgentRuntime, elizaLogger, ModelType, Memory, Content, State } from '@
 import { createSafeLogger } from '../config/credentials';
 import { MattermostConfig } from '../config';
 import { WebSocketClient } from '../clients/websocket.client';
-import { RestClient } from '../clients/rest.client';
+import { RestClient, ThreadContext } from '../clients/rest.client';
 
 /**
  * Represents a Mattermost post from WebSocket events
@@ -53,20 +53,7 @@ interface ProcessedMessage {
   mentions: string[];
 }
 
-/**
- * Thread context for conversation history
- */
-interface ThreadContext {
-  threadId: string;
-  messages: Array<{
-    id: string;
-    userId: string;
-    message: string;
-    timestamp: number;
-    username?: string;
-  }>;
-  messageCount: number;
-}
+// ThreadContext is now imported from RestClient
 
 /**
  * AI response generation result
@@ -608,23 +595,55 @@ export class MessageManager {
   }
 
   /**
-   * Retrieve thread context for conversation history with error handling
+   * Retrieve thread context for conversation history
    * @private
    */
   private async getThreadContext(threadId: string, channelId: string): Promise<ThreadContext | null> {
     return this.executeWithRetry(async () => {
       this.logger.debug('Retrieving thread context', { threadId, channelId });
 
-      // TEMPORARILY DISABLED - Thread context retrieval
-      // TODO: Re-enable when API method getPostsAroundPost is restored
-      this.logger.debug('Thread context temporarily disabled', { threadId, channelId });
-      return null;
+      try {
+        const threadData = await this.restClient.threads.getThreadContext(threadId, channelId, {
+          maxMessages: 15, // Get last 15 messages for context
+          includeFuture: false // Only include messages up to now
+        });
+
+        if (!threadData || threadData.posts.length === 0) {
+          this.logger.debug('No thread context found', { threadId, channelId });
+          return null;
+        }
+
+        this.logger.info('Thread context retrieved successfully', {
+          threadId,
+          channelId,
+          messageCount: threadData.messageCount,
+          participantCount: threadData.participantCount,
+          isActive: threadData.isActive,
+          lastActivity: threadData.lastActivity
+        });
+
+        // Return the ThreadContext from ThreadsClient directly - it matches our interface
+        return threadData;
+
+      } catch (error) {
+        // Log the error but don't fail the entire message processing
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn('Failed to retrieve thread context, continuing without it', {
+          threadId,
+          channelId,
+          error: errorMessage
+        });
+        return null;
+      }
 
     }, 'thread-context', 'Thread context retrieval');
   }
 
+  // convertPostsToThreadMessages method removed - ThreadsClient now handles this internally
+
   /**
    * Generate AI response using ElizaOS runtime with comprehensive error handling
+   * Enhanced with thread-aware context and better conversation understanding
    * @private
    */
   private async generateAIResponse(
@@ -635,6 +654,10 @@ export class MessageManager {
       channelId: string;
       isDirectMessage: boolean;
       isMention: boolean;
+      isThreadReply: boolean;
+      threadId: string;
+      senderName: string;
+      channelName: string;
     }
   ): Promise<AIResponseResult> {
     const startTime = Date.now();
@@ -645,42 +668,82 @@ export class MessageManager {
         hasContext: !!context,
         contextMessages: context?.messageCount || 0,
         isDirectMessage: metadata.isDirectMessage,
-        isMention: metadata.isMention
+        isMention: metadata.isMention,
+        isThreadReply: metadata.isThreadReply,
+        threadId: metadata.threadId,
+        senderName: metadata.senderName,
+        channelName: metadata.channelName
       });
 
       const result = await this.executeWithRetry(async () => {
-        // Build context string for the AI
-        let contextString = '';
-        if (context && context.messages.length > 0) {
-          contextString = context.messages
-            .map(msg => `${msg.username || 'User'}: ${msg.message}`)
-            .join('\n');
-          contextString = `Previous conversation:\n${contextString}\n\nCurrent message: ${message}`;
-        } else {
-          contextString = message;
-        }
+        // Build enhanced context for thread-aware responses
+        const conversationContext = this.buildConversationContext(message, context, metadata);
+        
+        // Create Memory object for ElizaOS
+        const memory: Memory = {
+          id: `mm-${metadata.threadId}-${Date.now()}`,
+          userId: metadata.userId,
+          agentId: this.botUserId || 'mattermost-bot',
+          roomId: metadata.channelId,
+          content: {
+            text: message,
+            source: 'mattermost',
+            metadata: {
+              channelName: metadata.channelName,
+              senderName: metadata.senderName,
+              isDirectMessage: metadata.isDirectMessage,
+              isMention: metadata.isMention,
+              isThreadReply: metadata.isThreadReply,
+              threadId: metadata.threadId,
+              platform: 'mattermost'
+            }
+          } as Content,
+          createdAt: Date.now(),
+          embedding: [] // Will be generated by ElizaOS if needed
+        };
 
-        // Generate response using ElizaOS runtime
-        const aiResponse = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: contextString,
-          temperature: 0.7,
-          maxTokens: 256,
-          user: metadata.userId
+        // Create State object with conversation context
+        const state: State = {
+          userId: metadata.userId,
+          agentId: this.botUserId || 'mattermost-bot',
+          roomId: metadata.channelId,
+          bio: '', // Bot's bio - could be enhanced
+          lore: '', // Bot's background knowledge
+          messageDirections: '',
+          postDirections: '',
+          recentMessages: context ? this.formatThreadContextForState(context) : [],
+          recentMessagesData: context?.posts || [],
+          goals: [], // Could be enhanced with conversation goals
+          goalsData: [],
+          actionNames: '', // Available actions
+          actions: [], // Action instances
+          providers: [], // Available providers
+          responseData: {},
+          knowledge: conversationContext, // Our enhanced context
+          keyEvents: [] // Key conversation events
+        };
+
+        // Generate response using ElizaOS runtime with proper context
+        const aiResponse = await this.runtime.composeState(memory, {
+          contextString: conversationContext,
+          template: this.getResponseTemplate(metadata),
+          max_response_length: 500 // Reasonable response length for chat
         });
 
-        // If the response is an object, extract the message
+        // Extract and validate response
         let responseText: string;
-        if (aiResponse !== null && aiResponse !== undefined) {
-          if (typeof aiResponse === 'object' && aiResponse && 'message' in aiResponse) {
-            const aiResponseObj = aiResponse as { message?: string };
-            responseText = String(aiResponseObj.message || '');
-          } else if (typeof aiResponse === 'string' && aiResponse.trim()) {
-            responseText = aiResponse;
-          } else {
-            responseText = 'I received your message, but I\'m having trouble generating a response right now. Please try again!';
-          }
+        if (aiResponse && typeof aiResponse === 'string' && aiResponse.trim()) {
+          responseText = aiResponse.trim();
+        } else if (aiResponse && typeof aiResponse === 'object' && 'text' in aiResponse) {
+          responseText = String((aiResponse as any).text || '').trim();
         } else {
-          responseText = 'I received your message, but I\'m having trouble generating a response right now. Please try again!';
+          // Fallback response based on context
+          responseText = this.generateFallbackResponse(metadata);
+        }
+
+        // Ensure response is not empty
+        if (!responseText) {
+          responseText = this.generateFallbackResponse(metadata);
         }
 
         return responseText;
@@ -693,13 +756,15 @@ export class MessageManager {
       this.logger.info('AI response generated successfully', {
         responseLength: result.length,
         processingTime,
-        model: 'TEXT_LARGE'
+        model: 'ElizaOS-Compose',
+        hasContext: !!context,
+        contextSize: context?.messageCount || 0
       });
 
       return {
         success: true,
         response: result,
-        model: 'TEXT_LARGE',
+        model: 'ElizaOS-Compose',
         processingTime
       };
 
@@ -714,7 +779,8 @@ export class MessageManager {
         errorMessage,
         errorType,
         processingTime,
-        messageLength: message.length
+        messageLength: message.length,
+        hasContext: !!context
       });
 
       return {
@@ -724,6 +790,118 @@ export class MessageManager {
         processingTime,
         retryable: ![ErrorType.AUTHENTICATION_ERROR, ErrorType.VALIDATION_ERROR].includes(errorType)
       };
+    }
+  }
+
+  /**
+   * Build comprehensive conversation context for AI response generation
+   * @private
+   */
+  private buildConversationContext(
+    currentMessage: string, 
+    threadContext: ThreadContext | null, 
+    metadata: {
+      isDirectMessage: boolean;
+      isMention: boolean;
+      isThreadReply: boolean;
+      channelName: string;
+      senderName: string;
+    }
+  ): string {
+    let context = '';
+
+    // Add channel/conversation type context
+    if (metadata.isDirectMessage) {
+      context += `This is a direct message conversation with ${metadata.senderName}.\n\n`;
+    } else if (metadata.isThreadReply) {
+      context += `This is a reply in a thread discussion in the #${metadata.channelName} channel.\n\n`;
+    } else if (metadata.isMention) {
+      context += `You were mentioned in the #${metadata.channelName} channel by ${metadata.senderName}.\n\n`;
+    } else {
+      context += `This is a message in the #${metadata.channelName} channel.\n\n`;
+    }
+
+    // Add thread conversation history if available
+    if (threadContext && threadContext.posts.length > 1) {
+      context += `Previous conversation in this thread:\n`;
+      
+      // Show the last few messages for context (limit to prevent token overflow)
+      const recentPosts = threadContext.posts.slice(-8); // Last 8 messages
+      
+      for (const post of recentPosts) {
+        const timestamp = new Date(post.create_at).toLocaleTimeString();
+        const username = post.username || `User-${post.user_id.slice(-4)}`;
+        context += `[${timestamp}] ${username}: ${post.message}\n`;
+      }
+      context += '\n';
+    }
+
+    // Add current message
+    context += `Current message from ${metadata.senderName}: ${currentMessage}\n\n`;
+
+    // Add response guidance based on context
+    if (metadata.isThreadReply) {
+      context += 'Please provide a response that continues the thread conversation naturally and addresses the current message in the context of the previous discussion.';
+    } else if (metadata.isMention) {
+      context += 'You were specifically mentioned. Please provide a helpful and relevant response.';
+    } else if (metadata.isDirectMessage) {
+      context += 'This is a private conversation. Respond in a friendly and helpful manner.';
+    } else {
+      context += 'Provide a helpful response appropriate for the channel discussion.';
+    }
+
+    return context;
+  }
+
+  /**
+   * Get appropriate response template based on conversation context
+   * @private
+   */
+  private getResponseTemplate(metadata: {
+    isDirectMessage: boolean;
+    isMention: boolean;
+    isThreadReply: boolean;
+  }): string {
+    if (metadata.isDirectMessage) {
+      return 'You are a helpful AI assistant in a private conversation. Respond naturally and helpfully to the user\'s message.';
+    } else if (metadata.isThreadReply) {
+      return 'You are participating in a thread discussion. Continue the conversation naturally, taking into account the previous messages in the thread.';
+    } else if (metadata.isMention) {
+      return 'You were mentioned in a channel. Provide a helpful response that addresses the mention appropriately.';
+    } else {
+      return 'You are an AI assistant in a team chat channel. Respond helpfully and appropriately to the conversation.';
+    }
+  }
+
+  /**
+   * Format thread context for ElizaOS State
+   * @private
+   */
+  private formatThreadContextForState(context: ThreadContext): string[] {
+    return context.posts.map(post => {
+      const username = post.username || `User-${post.user_id.slice(-4)}`;
+      return `${username}: ${post.message}`;
+    });
+  }
+
+  /**
+   * Generate a contextually appropriate fallback response
+   * @private
+   */
+  private generateFallbackResponse(metadata: {
+    isDirectMessage: boolean;
+    isMention: boolean;
+    isThreadReply: boolean;
+    senderName: string;
+  }): string {
+    if (metadata.isDirectMessage) {
+      return `Hi ${metadata.senderName}! I received your message, but I'm having trouble generating a response right now. Could you try rephrasing your question?`;
+    } else if (metadata.isThreadReply) {
+      return "I'm following this thread discussion, but I'm having trouble generating a response at the moment. Please try again!";
+    } else if (metadata.isMention) {
+      return `Thanks for mentioning me, ${metadata.senderName}! I'm having some technical difficulties right now, but I'll be back to help soon.`;
+    } else {
+      return "I'm experiencing some technical issues right now. Please try your request again in a moment!";
     }
   }
 
@@ -743,7 +921,7 @@ export class MessageManager {
         isThreadReply: !!rootId
       });
 
-      await this.restClient.createPost(channelId, response, {
+      await this.restClient.posts.createPost(channelId, response, {
         rootId: rootId
       });
 
@@ -855,6 +1033,7 @@ export class MessageManager {
 
   /**
    * Route a processed message with comprehensive error handling and resilience
+   * Enhanced with full thread-aware processing
    * @private
    */
   private async routeMessage(processedMessage: ProcessedMessage): Promise<void> {
@@ -868,31 +1047,43 @@ export class MessageManager {
         channelName: eventData.channel_name,
         isDirectMessage,
         isMention,
+        isThreadReply: !!post.root_id,
+        rootId: post.root_id,
         messagePreview: post.message.substring(0, 100)
       });
 
       // Mark as processed first to prevent duplicate handling
       this.markMessageProcessed(post.id);
 
-      // Get thread context if this is a reply or we want conversation history
+      // Determine thread context and response strategy
       const threadId = post.root_id || post.id;
       let threadContext: ThreadContext | null = null;
+      let shouldReplyInThread = false;
       
+      // Enhanced thread detection and context gathering
       if (post.root_id) {
+        // This is definitely a thread reply
+        shouldReplyInThread = true;
         try {
-          // This is a thread reply, get context
-          threadContext = await this.getThreadContext(threadId, post.channel_id);
+          threadContext = await this.getThreadContext(post.root_id, post.channel_id);
+          this.logger.info('Thread context retrieved for reply', {
+            threadId: post.root_id,
+            contextMessages: threadContext?.messageCount || 0,
+            lastMessageTime: threadContext?.posts[threadContext.posts.length - 1]?.create_at
+          });
         } catch (error) {
-          // Log error but continue without context
-          this.logger.warn('Failed to retrieve thread context, continuing without it', {
-            threadId,
-            channelId: post.channel_id,
+          this.logger.warn('Failed to retrieve thread context for reply, continuing without it', {
+            threadId: post.root_id,
             error: error instanceof Error ? error.message : 'Unknown error'
           });
         }
+      } else if (!isDirectMessage) {
+        // For channel messages (not DMs), consider starting a new thread if we're mentioned
+        // This keeps channel conversations organized
+        shouldReplyInThread = isMention;
       }
 
-      // Generate AI response
+      // Generate AI response with enhanced context awareness
       const aiResult = await this.generateAIResponse(
         post.message,
         threadContext,
@@ -900,17 +1091,23 @@ export class MessageManager {
           userId: post.user_id,
           channelId: post.channel_id,
           isDirectMessage,
-          isMention
+          isMention,
+          isThreadReply: !!post.root_id,
+          threadId: threadId,
+          senderName: eventData.sender_name,
+          channelName: eventData.channel_name
         }
       );
 
       if (aiResult.success && aiResult.response) {
         try {
-          // Post the AI response back to Mattermost
+          // Post the AI response back to Mattermost with proper threading
+          const responseRootId = shouldReplyInThread ? threadId : undefined;
+          
           await this.postResponse(
             post.channel_id,
             aiResult.response,
-            threadId // Reply in thread
+            responseRootId
           );
 
           this.logger.info('Message processed successfully', {
@@ -918,6 +1115,8 @@ export class MessageManager {
             responseLength: aiResult.response.length,
             processingTime: aiResult.processingTime,
             totalTime: Date.now() - startTime,
+            threadReply: shouldReplyInThread,
+            threadId: responseRootId,
             cacheSize: this.processedMessages.size
           });
 
@@ -927,7 +1126,8 @@ export class MessageManager {
           const userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
           
           try {
-            await this.postResponse(post.channel_id, userMessage, threadId);
+            const fallbackRootId = shouldReplyInThread ? threadId : undefined;
+            await this.postResponse(post.channel_id, userMessage, fallbackRootId);
           } catch (fallbackError) {
             this.logger.error('Failed to send fallback error message', fallbackError);
           }
@@ -947,7 +1147,8 @@ export class MessageManager {
         }
 
         try {
-          await this.postResponse(post.channel_id, userMessage, threadId);
+          const fallbackRootId = shouldReplyInThread ? threadId : undefined;
+          await this.postResponse(post.channel_id, userMessage, fallbackRootId);
         } catch (fallbackError) {
           this.logger.error('Failed to send error message to user', fallbackError);
         }
@@ -976,7 +1177,9 @@ export class MessageManager {
       if (this.errorConfig.enableFallbackMessages) {
         try {
           const userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
-          await this.postResponse(post.channel_id, userMessage, post.root_id || post.id);
+          // Determine if we should reply in thread for error messages too
+          const errorRootId = (post.root_id || (!isDirectMessage && isMention)) ? (post.root_id || post.id) : undefined;
+          await this.postResponse(post.channel_id, userMessage, errorRootId);
         } catch (sendError) {
           this.logger.error('Failed to send final error response', sendError);
         }

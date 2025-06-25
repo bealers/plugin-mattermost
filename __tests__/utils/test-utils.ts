@@ -47,6 +47,9 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       return Promise.resolve('Default response');
     }),
 
+    // State composition method (used in new implementation)
+    composeState: vi.fn().mockResolvedValue('Composed AI response from mock runtime'),
+
     // Additional methods used in tests
     init: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -98,7 +101,7 @@ export function createMockWebSocketClient(overrides: any = {}) {
 }
 
 /**
- * Creates a mock RestClient for testing
+ * Creates a mock RestClient for testing with new modular structure
  *
  * @param overrides - Optional overrides for the default client methods
  * @returns A mock REST client
@@ -116,6 +119,52 @@ export function createMockRestClient(overrides: any = {}) {
       id: 'mock-team-id',
       name: 'Mock Team',
     }),
+    getChannelsForTeam: vi.fn().mockResolvedValue([]),
+    getChannelByName: vi.fn().mockResolvedValue({
+      id: 'mock-channel-id',
+      name: 'mock-channel',
+    }),
+    joinChannel: vi.fn().mockResolvedValue(undefined),
+    
+    // Modular client structure
+    posts: {
+      createPost: vi.fn().mockResolvedValue({
+        id: 'mock-post-id',
+        create_at: Date.now(),
+      }),
+      getPost: vi.fn().mockResolvedValue({
+        id: 'mock-post-id',
+        message: 'Mock post',
+      }),
+      getPostsForChannel: vi.fn().mockResolvedValue({
+        posts: {},
+        order: []
+      }),
+    },
+    
+    threads: {
+      getThreadContext: vi.fn().mockResolvedValue({
+        posts: [
+          {
+            id: 'mock-post-1',
+            user_id: 'user-1',
+            message: 'Mock thread message',
+            create_at: Date.now(),
+            username: 'MockUser'
+          }
+        ],
+        messageCount: 1,
+        participantCount: 1,
+        lastActivity: new Date(),
+        isActive: true
+      }),
+      replyToThread: vi.fn().mockResolvedValue({
+        id: 'mock-thread-reply-id',
+        create_at: Date.now(),
+      }),
+    },
+    
+    // Legacy methods for backwards compatibility (deprecated)
     createPost: vi.fn().mockResolvedValue({
       id: 'mock-post-id',
       create_at: Date.now(),
@@ -123,12 +172,14 @@ export function createMockRestClient(overrides: any = {}) {
     getPostsAroundPost: vi.fn().mockResolvedValue({
       posts: {},
     }),
-    getChannelsForTeam: vi.fn().mockResolvedValue([]),
-    getChannelByName: vi.fn().mockResolvedValue({
-      id: 'mock-channel-id',
-      name: 'mock-channel',
+    getThreadContext: vi.fn().mockResolvedValue({
+      posts: [],
+      messageCount: 0,
+      participantCount: 0,
+      lastActivity: new Date(),
+      isActive: false
     }),
-    joinChannel: vi.fn().mockResolvedValue(undefined),
+    
     ...overrides,
   };
 }
