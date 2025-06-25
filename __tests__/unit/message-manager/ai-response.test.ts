@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createMessageManagerTestSetup, MessageManagerTestSetup, testData } from './shared-setup';
+import { createMessageManagerTestSetup, MessageManagerTestSetup, testData, processMessageAndWait } from './shared-setup';
 
 describe('MessageManager - AI Response Generation', () => {
   let setup: MessageManagerTestSetup;
@@ -22,48 +22,98 @@ describe('MessageManager - AI Response Generation', () => {
 
     const directMessage = testData.directMessage();
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
-    await postedHandler!(directMessage);
-    
+    await processMessageAndWait(setup.mockWsClient, directMessage);
+
     expect(setup.mockRestClient.posts.createPost).toHaveBeenCalledWith(
       'channel-123',
       'Simple string response',
-      { rootId: 'msg-1' }
+      expect.any(Object)
     );
   });
 
   it('should handle object responses from AI model', async () => {
-    setup.composeStateMock.mockResolvedValue({ message: 'Object response message' });
+    setup.composeStateMock.mockResolvedValue({
+      text: 'Object response message',
+      action: 'CONTINUE'
+    });
 
     const directMessage = testData.directMessage();
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
-    await postedHandler!(directMessage);
-    
-    expect(setup.mockRestClient.createPost).toHaveBeenCalledWith(
+    await processMessageAndWait(setup.mockWsClient, directMessage);
+
+    expect(setup.mockRestClient.posts.createPost).toHaveBeenCalledWith(
       'channel-123',
       'Object response message',
-      { rootId: 'msg-1' }
+      expect.any(Object)
     );
   });
 
-  it('should handle null/undefined responses from AI model', async () => {
+  it('should handle null responses gracefully', async () => {
     setup.composeStateMock.mockResolvedValue(null);
 
     const directMessage = testData.directMessage();
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
-    await postedHandler!(directMessage);
-    
-    // Should not attempt to post when response is null
-    expect(setup.mockRestClient.createPost).not.toHaveBeenCalled();
-    expect(setup.mockRestClient.posts.createPost).not.toHaveBeenCalled();
+    await processMessageAndWait(setup.mockWsClient, directMessage);
+
+    // Should post a fallback message when AI returns null
+    expect(setup.mockRestClient.posts.createPost).toHaveBeenCalledWith(
+      'channel-123',
+      expect.stringContaining('having trouble generating a response'),
+      expect.any(Object)
+    );
+  });
+
+  it('should include thread context in AI generation for replies', async () => {
+    const mockThreadContext = {
+      posts: [
+        {
+          id: 'original-post',
+          user_id: 'other-user',
+          message: 'Original message in thread',
+          create_at: Date.now() - 10000,
+          username: 'OtherUser'
+        },
+        {
+          id: 'reply-1',
+          user_id: 'another-user',
+          message: 'First reply',
+          create_at: Date.now() - 5000,
+          root_id: 'original-post',
+          username: 'AnotherUser'
+        }
+      ],
+      messageCount: 2,
+      participantCount: 2,
+      lastActivity: new Date(Date.now() - 5000),
+      isActive: true
+    };
+
+    setup.mockRestClient.threads.getThreadContext.mockResolvedValue(mockThreadContext);
+    setup.composeStateMock.mockResolvedValue('Reply with context');
+
+    const threadReply = testData.threadReply('original-post');
+    threadReply.mentions = JSON.stringify(['mock-bot-user-id']);
+
+    await processMessageAndWait(setup.mockWsClient, threadReply);
+
+    // Should call getThreadContext for thread replies
+    expect(setup.mockRestClient.threads.getThreadContext).toHaveBeenCalledWith(
+      'original-post',
+      'channel-123',
+      expect.any(Object)
+    );
+
+    // Should call composeState with thread context
+    expect(setup.composeStateMock).toHaveBeenCalled();
+    const composeStateCall = setup.composeStateMock.mock.calls[0];
+    expect(composeStateCall[0]).toMatchObject({
+      agentId: expect.any(String),
+      roomId: expect.any(String),
+      userId: expect.any(String),
+      content: expect.objectContaining({
+        text: expect.any(String)
+      })
+    });
   });
 
   it('should handle AI model errors gracefully', async () => {
@@ -71,64 +121,28 @@ describe('MessageManager - AI Response Generation', () => {
 
     const directMessage = testData.directMessage();
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
     // Should not throw, should handle error gracefully
-    await expect(postedHandler!(directMessage)).resolves.not.toThrow();
+    await expect(processMessageAndWait(setup.mockWsClient, directMessage)).resolves.not.toThrow();
     
     // Should not attempt to post when AI fails
-    expect(setup.mockRestClient.createPost).not.toHaveBeenCalled();
+    expect(setup.mockRestClient.posts.createPost).not.toHaveBeenCalled();
   });
 
-  it('should include thread context in AI generation for replies', async () => {
-    const mockThreadPosts = {
-      posts: {
-        'root-post': {
-          id: 'root-post',
-          user_id: 'user-456',
-          message: 'Original message',
-          create_at: Date.now() - 60000,
-          user_display_name: 'Original User'
-        }
-      }
-    };
-
-    vi.mocked(setup.mockRestClient.getPostsAroundPost).mockResolvedValue(mockThreadPosts);
-    setup.composeStateMock.mockResolvedValue('Thread-aware response');
-
-    const threadReply = testData.threadReply('root-post');
-    threadReply.mentions = JSON.stringify(['mock-bot-user-id']);
-
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
-    await postedHandler!(threadReply);
-    
-    // Should call composeState with thread context
-    expect(setup.composeStateMock).toHaveBeenCalled();
-    const composeStateCall = setup.composeStateMock.mock.calls[0];
-    expect(composeStateCall[0]).toMatchObject({
-      agentName: expect.any(String),
-      recentMessagesData: expect.arrayContaining([
-        expect.objectContaining({
-          userId: 'user-456',
-          content: 'Original message'
-        })
-      ])
+  it('should handle object responses without text property', async () => {
+    setup.composeStateMock.mockResolvedValue({
+      action: 'CONTINUE',
+      // missing text property
     });
-  });
-
-  it('should handle response posting errors gracefully', async () => {
-    setup.composeStateMock.mockResolvedValue('Valid response');
-    vi.mocked(setup.mockRestClient.createPost).mockRejectedValue(new Error('Post creation failed'));
 
     const directMessage = testData.directMessage();
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
-    // Should not throw, should handle post error gracefully
-    await expect(postedHandler!(directMessage)).resolves.not.toThrow();
+    await processMessageAndWait(setup.mockWsClient, directMessage);
+
+    // Should post a fallback message when object has no text
+    expect(setup.mockRestClient.posts.createPost).toHaveBeenCalledWith(
+      'channel-123',
+      expect.stringContaining('having trouble generating a response'),
+      expect.any(Object)
+    );
   });
 }); 

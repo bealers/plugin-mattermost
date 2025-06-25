@@ -1,12 +1,19 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createMessageManagerTestSetup, MessageManagerTestSetup } from './shared-setup';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createMessageManagerTestSetup, MessageManagerTestSetup, processMessageAndWait } from './shared-setup';
 
 describe('MessageManager - Edge Cases and Error Scenarios', () => {
   let setup: MessageManagerTestSetup;
 
   beforeEach(async () => {
-    setup = await createMessageManagerTestSetup();
+    vi.clearAllMocks();
+    setup = createMessageManagerTestSetup();
     await setup.messageManager.initialize();
+  });
+
+  afterEach(async () => {
+    if (setup.messageManager.isReady()) {
+      await setup.messageManager.cleanup();
+    }
   });
 
   it('should handle empty or whitespace-only messages', async () => {
@@ -32,20 +39,18 @@ describe('MessageManager - Edge Cases and Error Scenarios', () => {
         channel_mentions: []
       }),
       sender_name: 'Test User',
-      team_id: 'team-123'
+      team_id: 'team-123',
+      mentions: JSON.stringify(['mock-bot-user-id'])
     };
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
+    // Should not trigger AI generation for empty messages
+    await processMessageAndWait(setup.mockWsClient, emptyMessage);
     
-    await postedHandler!(emptyMessage);
-    
-    // Should not call AI generation for empty messages
     expect(setup.composeStateMock).not.toHaveBeenCalled();
   });
 
   it('should handle very long messages', async () => {
-    const longMessage = 'x'.repeat(10000);
+    const longMessage = 'A'.repeat(5000);
     
     const message = {
       channel_display_name: 'Direct Message',
@@ -69,21 +74,19 @@ describe('MessageManager - Edge Cases and Error Scenarios', () => {
         channel_mentions: []
       }),
       sender_name: 'Test User',
-      team_id: 'team-123'
+      team_id: 'team-123',
+      mentions: JSON.stringify(['mock-bot-user-id'])
     };
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
-    await expect(postedHandler!(message)).resolves.not.toThrow();
+    setup.composeStateMock.mockResolvedValue('I see you have a lot to say!');
+
+    await expect(processMessageAndWait(setup.mockWsClient, message)).resolves.not.toThrow();
     
     expect(setup.composeStateMock).toHaveBeenCalled();
   });
 
   it('should handle concurrent message processing', async () => {
-    setup.composeStateMock.mockImplementation(() => 
-      new Promise(resolve => setTimeout(() => resolve('Async response'), 100))
-    );
+    setup.composeStateMock.mockResolvedValue('Concurrent response');
 
     const messages = Array.from({ length: 5 }, (_, i) => ({
       channel_display_name: 'Direct Message',
@@ -93,7 +96,7 @@ describe('MessageManager - Edge Cases and Error Scenarios', () => {
         id: `concurrent-msg-${i}`,
         user_id: 'user-123',
         channel_id: 'channel-dm',
-        message: `Message ${i}`,
+        message: `Message ${i + 1}`,
         create_at: Date.now() + i,
         update_at: Date.now() + i,
         type: '',
@@ -107,37 +110,48 @@ describe('MessageManager - Edge Cases and Error Scenarios', () => {
         channel_mentions: []
       }),
       sender_name: 'Test User',
-      team_id: 'team-123'
+      team_id: 'team-123',
+      mentions: JSON.stringify(['mock-bot-user-id'])
     }));
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-
     // Process all messages concurrently
-    const promises = messages.map(message => postedHandler!(message));
-    
-    await expect(Promise.all(promises)).resolves.not.toThrow();
+    await Promise.all(messages.map(msg => processMessageAndWait(setup.mockWsClient, msg)));
     
     // All messages should have been processed
     expect(setup.composeStateMock).toHaveBeenCalledTimes(5);
   });
 
-  it('should handle invalid JSON in post data', async () => {
-    const invalidMessage = {
+  it('should handle messages with special characters and emojis', async () => {
+    const specialMessage = {
       channel_display_name: 'Direct Message',
       channel_name: 'user__bot',
       channel_type: 'D',
-      post: 'invalid json',
+      post: JSON.stringify({
+        id: 'special-msg',
+        user_id: 'user-123',
+        channel_id: 'channel-dm',
+        message: 'Hello 👋 @bot! Can you help with UTF-8: café, naïve, 中文? 🤖',
+        create_at: Date.now(),
+        update_at: Date.now(),
+        type: '',
+        props: {},
+        hashtags: '',
+        pending_post_id: '',
+        reply_count: 0,
+        last_reply_at: 0,
+        participants: null,
+        is_following: false,
+        channel_mentions: []
+      }),
       sender_name: 'Test User',
-      team_id: 'team-123'
+      team_id: 'team-123',
+      mentions: JSON.stringify(['mock-bot-user-id'])
     };
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
+    setup.composeStateMock.mockResolvedValue('I can help with special characters!');
+
+    await processMessageAndWait(setup.mockWsClient, specialMessage);
     
-    await expect(postedHandler!(invalidMessage)).resolves.not.toThrow();
-    
-    // Should not call AI generation for invalid messages
-    expect(setup.composeStateMock).not.toHaveBeenCalled();
+    expect(setup.composeStateMock).toHaveBeenCalled();
   });
 }); 

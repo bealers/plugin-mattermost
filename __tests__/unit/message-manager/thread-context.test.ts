@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createMessageManagerTestSetup, MessageManagerTestSetup, testData } from './shared-setup';
+import { createMessageManagerTestSetup, MessageManagerTestSetup, testData, processMessageAndWait } from './shared-setup';
 
 describe('MessageManager - Thread Context Handling', () => {
   let setup: MessageManagerTestSetup;
@@ -18,37 +18,90 @@ describe('MessageManager - Thread Context Handling', () => {
   });
 
   it('should retrieve thread context for reply messages', async () => {
-    // Mock thread context response
-    const mockThreadPosts = {
-      posts: {
-        'original-post': {
+    // Set up mocks first
+    setup.composeStateMock.mockResolvedValue('Thread-aware response');
+    
+    // Mock thread context response with CORRECT structure (posts as array)
+    const mockThreadContext = {
+      posts: [
+        {
           id: 'original-post',
           user_id: 'user-456',
           message: 'Original message',
           create_at: Date.now() - 60000,
-          user_display_name: 'Original User'
-        },
-        'reply-1': {
-          id: 'reply-1',
-          user_id: 'user-789',
-          message: 'First reply',
-          create_at: Date.now() - 30000,
-          user_display_name: 'Reply User'
+          user_display_name: 'Original User',
+          username: 'OriginalUser'
         }
-      }
+      ],
+      messageCount: 1,
+      participantCount: 1,
+      lastActivity: new Date(Date.now() - 60000),
+      isActive: true
     };
 
-    vi.mocked(setup.mockRestClient.getPostsAroundPost).mockResolvedValue(mockThreadPosts);
+    setup.mockRestClient.threads.getThreadContext.mockResolvedValue(mockThreadContext);
 
-    const threadReply = {
+    // Create thread message exactly like the working filtering test, just add root_id
+    const threadMessage = {
       channel_display_name: 'General',
       channel_name: 'general',
       channel_type: 'O',
       post: JSON.stringify({
-        id: 'msg-thread',
+        id: 'thread-reply',
+        user_id: 'user-456',
+        channel_id: 'channel-general',
+        message: '@bot help me in this thread',
+        create_at: Date.now(),
+        update_at: Date.now(),
+        type: '',
+        props: {},
+        hashtags: '',
+        pending_post_id: '',
+        reply_count: 0,
+        last_reply_at: 0,
+        participants: null,
+        is_following: false,
+        channel_mentions: [],
+        root_id: 'original-post'
+      }),
+      sender_name: 'Test User',
+      team_id: 'team-123',
+      mentions: JSON.stringify(['mock-bot-user-id'])
+    };
+
+    // Use the exact same pattern as the working filtering test
+    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
+      .find(call => call[0] === 'posted')?.[1];
+    
+    await postedHandler!(threadMessage);
+    
+    // Wait for async processing
+    await new Promise(resolve => setImmediate(resolve));
+
+    // Should call getThreadContext
+    expect(setup.mockRestClient.threads.getThreadContext).toHaveBeenCalledWith(
+      'original-post',
+      'channel-general',
+      expect.any(Object)
+    );
+
+    // Should generate AI response
+    expect(setup.composeStateMock).toHaveBeenCalled();
+  });
+
+  it('should handle thread context retrieval failure gracefully', async () => {
+    setup.mockRestClient.threads.getThreadContext.mockRejectedValue(new Error('API Error'));
+
+    // Create a proper thread reply with bot mention
+    const threadReply = {
+      channel_display_name: 'General',
+      channel_name: 'general', 
+      channel_type: 'O',
+      post: JSON.stringify({
+        id: 'msg-thread-error',
         user_id: 'user-123',
         channel_id: 'channel-general',
-        message: 'This is a reply',
+        message: '@bot This is a reply that will fail context retrieval',
         create_at: Date.now(),
         update_at: Date.now(),
         type: '',
@@ -67,34 +120,10 @@ describe('MessageManager - Thread Context Handling', () => {
       mentions: JSON.stringify(['mock-bot-user-id'])
     };
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
-    await postedHandler!(threadReply);
-    
-    // Wait for async processing
-    await new Promise(resolve => setImmediate(resolve));
-    
-    expect(setup.mockRestClient.getPostsAroundPost).toHaveBeenCalledWith(
-      'original-post',
-      'channel-general',
-      { before: 10, after: 10 }
-    );
+    setup.composeStateMock.mockResolvedValue('Response without context');
 
-    expect(setup.composeStateMock).toHaveBeenCalled();
-  });
-
-  it('should handle thread context retrieval failure gracefully', async () => {
-    vi.mocked(setup.mockRestClient.getPostsAroundPost).mockRejectedValue(new Error('API Error'));
-
-    const threadReply = testData.threadReply('original-post');
-    threadReply.mentions = JSON.stringify(['mock-bot-user-id']);
-
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
-      .find(call => call[0] === 'posted')?.[1];
-    
     // Should not throw, should continue without context
-    await expect(postedHandler!(threadReply)).resolves.not.toThrow();
+    await expect(processMessageAndWait(setup.mockWsClient, threadReply)).resolves.not.toThrow();
     
     // Should still call AI generation, just without context
     expect(setup.composeStateMock).toHaveBeenCalled();
