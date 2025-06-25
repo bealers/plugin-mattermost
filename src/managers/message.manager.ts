@@ -3,6 +3,7 @@ import { createSafeLogger } from '../config/credentials';
 import { MattermostConfig } from '../config';
 import { WebSocketClient } from '../clients/websocket.client';
 import { RestClient, ThreadContext } from '../clients/rest.client';
+import { AttachmentManager } from './attachment.manager';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -26,6 +27,7 @@ interface MattermostPost {
   channel_mentions: string[];
   root_id?: string;
   parent_id?: string;
+  file_ids?: string[]; // File attachments
 }
 
 /**
@@ -124,6 +126,7 @@ export class MessageManager {
   private runtime: IAgentRuntime;
   private wsClient: WebSocketClient;
   private restClient: RestClient;
+  private attachmentManager: AttachmentManager;
   private logger = createSafeLogger(elizaLogger);
   
   // State management
@@ -166,12 +169,14 @@ export class MessageManager {
     config: MattermostConfig,
     runtime: IAgentRuntime,
     wsClient: WebSocketClient,
-    restClient: RestClient
+    restClient: RestClient,
+    attachmentManager: AttachmentManager
   ) {
     this.config = config;
     this.runtime = runtime;
     this.wsClient = wsClient;
     this.restClient = restClient;
+    this.attachmentManager = attachmentManager;
     
     // Initialize circuit breakers
     this.initializeCircuitBreakers();
@@ -1067,6 +1072,36 @@ export class MessageManager {
 
       // Mark as processed first to prevent duplicate handling
       this.markMessageProcessed(post.id);
+
+      // Process file attachments if present
+      if (post.file_ids && post.file_ids.length > 0) {
+        try {
+          this.logger.info('Processing file attachments', {
+            postId: post.id,
+            fileCount: post.file_ids.length,
+            fileIds: post.file_ids
+          });
+          
+          // Process files asynchronously - don't wait for completion
+          setImmediate(() => {
+            this.attachmentManager.processFileAttachments(
+              post.file_ids!, 
+              post.channel_id, 
+              post.id
+            ).catch(error => {
+              this.logger.error('Error processing file attachments', error, {
+                postId: post.id,
+                fileIds: post.file_ids
+              });
+            });
+          });
+        } catch (error) {
+          this.logger.warn('Failed to process file attachments', error, {
+            postId: post.id,
+            fileIds: post.file_ids
+          });
+        }
+      }
 
       // Determine thread context and response strategy
       const threadId = post.root_id || post.id;

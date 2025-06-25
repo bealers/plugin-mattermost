@@ -559,6 +559,28 @@ export class RestClient extends BaseClient {
   }
 
   /**
+   * Download a file from Mattermost
+   */
+  async downloadFile(fileId: string): Promise<ArrayBuffer> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Downloading file', { fileId });
+        
+        const fileData = await this.client.getFilePreview(fileId);
+        
+        this.logger.debug('File downloaded successfully', { 
+          fileId,
+          dataSize: fileData.byteLength
+        });
+        
+        return fileData;
+      } catch (error) {
+        throw this.createApiError(error, 'Failed to download file');
+      }
+    }, `downloadFile(${fileId})`);
+  }
+
+  /**
    * Get channel members
    */
   async getChannelMembers(channelId: string, page?: number, perPage?: number): Promise<any[]> {

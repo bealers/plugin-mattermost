@@ -12,6 +12,7 @@ import { RestClient } from '../clients/rest.client';
 import { WebSocketClient } from '../clients/websocket.client';
 import { MessageManager } from '../managers/message.manager';
 import { ChannelManager } from '../managers/channel.manager';
+import { AttachmentManager } from '../managers/attachment.manager';
 import { ErrorHandler, ErrorSeverity, ServiceHealth } from '../utils/error-handler';
 
 /**
@@ -30,6 +31,7 @@ export class MattermostService extends Service {
     private wsClient?: WebSocketClient;
     private messageManager?: MessageManager;
     private channelManager?: ChannelManager;
+    private attachmentManager?: AttachmentManager;
     private errorHandler?: ErrorHandler;
     
     // Service state
@@ -180,13 +182,20 @@ export class MattermostService extends Service {
             await this.channelManager.initialize();
             this.safeLogger.info('✅ Channel Manager initialized successfully');
 
-            // Initialize Message Manager (depends on ChannelManager)
+            // Initialize Attachment Manager
+            this.safeLogger.info('📁 Initializing Attachment Manager...');
+            this.attachmentManager = new AttachmentManager(this.restClient, this.runtime!);
+            await this.attachmentManager.initialize();
+            this.safeLogger.info('✅ Attachment Manager initialized successfully');
+
+            // Initialize Message Manager (depends on ChannelManager and AttachmentManager)
             this.safeLogger.info('💬 Initializing Message Manager...');
             this.messageManager = new MessageManager(
                 this.mattermostConfig,
                 this.runtime!,
                 this.wsClient,
-                this.restClient
+                this.restClient,
+                this.attachmentManager
             );
             
             await this.messageManager.initialize();
@@ -452,6 +461,7 @@ export class MattermostService extends Service {
                !!this.wsClient?.isConnected() &&
                !!this.messageManager?.isReady() &&
                !!this.channelManager?.initialized &&
+               !!this.attachmentManager?.initialized &&
                !!this.botUser && 
                !!this.team;
     }
@@ -492,6 +502,13 @@ export class MattermostService extends Service {
     }
 
     /**
+     * Get Attachment manager instance for external use
+     */
+    getAttachmentManager(): AttachmentManager | undefined {
+        return this.attachmentManager;
+    }
+
+    /**
      * Cleanup and stop the service
      */
     private async cleanup(): Promise<void> {
@@ -521,6 +538,15 @@ export class MattermostService extends Service {
             }
         }
 
+        // Cleanup attachment manager
+        if (this.attachmentManager) {
+            try {
+                await this.attachmentManager.cleanup();
+            } catch (error) {
+                this.safeLogger.warn('Error cleaning up attachment manager:', error);
+            }
+        }
+
         // Disconnect WebSocket
         if (this.wsClient) {
             try {
@@ -535,6 +561,7 @@ export class MattermostService extends Service {
         this.wsClient = undefined;
         this.messageManager = undefined;
         this.channelManager = undefined;
+        this.attachmentManager = undefined;
         this.botUser = undefined;
         this.team = undefined;
         this.isConnected = false;
