@@ -9,20 +9,33 @@ import {
 } from '../config';
 import { createSafeLogger } from '../config/credentials';
 import { RestClient } from '../clients/rest.client';
+import { WebSocketClient } from '../clients/websocket.client';
+import { MessageManager } from '../managers/message.manager';
+import { ErrorHandler, ErrorSeverity, ServiceHealth } from '../utils/error-handler';
 
 /**
- * Mattermost Service Implementation with REST API and Message Handling
+ * Enhanced Mattermost Service with comprehensive error handling and resilience
  */
 export class MattermostService extends Service {
     static serviceType = 'mattermost';
-    capabilityDescription = 'Mattermost platform integration service for message handling and bot interactions';
+    capabilityDescription = 'Mattermost platform integration service with real-time messaging, error handling, and resilience';
 
     private isConnected: boolean = false;
     private mattermostConfig?: MattermostConfig;
     private safeLogger = createSafeLogger(elizaLogger);
+    
+    // Core components
     private restClient?: RestClient;
+    private wsClient?: WebSocketClient;
+    private messageManager?: MessageManager;
+    private errorHandler?: ErrorHandler;
+    
+    // Service state
     private botUser?: any;
     private team?: any;
+    private isInitializing = false;
+    private healthCheckInterval?: NodeJS.Timeout;
+    private readonly HEALTH_CHECK_INTERVAL = 60000; // 1 minute
 
     constructor(runtime?: IAgentRuntime) {
         super(runtime);
@@ -35,6 +48,9 @@ export class MattermostService extends Service {
         const service = new MattermostService(runtime);
         
         try {
+            // Initialize error handler first
+            service.errorHandler = new ErrorHandler(runtime);
+            
             // Load and validate configuration
             safeLogger.info('Loading Mattermost configuration...');
             service.mattermostConfig = loadConfig();
@@ -50,15 +66,32 @@ export class MattermostService extends Service {
             // Initialize service components with configuration
             await service.initializeComponents();
             
+            // Start health monitoring
+            service.startHealthMonitoring();
+            
             service.isConnected = true;
             safeLogger.info('*** MATTERMOST SERVICE STARTED SUCCESSFULLY ***');
-            safeLogger.info('🚀 Mattermost service is now ready for interactions!');
+            safeLogger.info('🚀 Mattermost service is now ready for real-time interactions!');
             safeLogger.info(`🤖 Bot user: ${service.botUser?.username}`);
             safeLogger.info(`🏢 Team: ${service.team?.name}`);
+            safeLogger.info('📡 WebSocket connected, MessageManager active');
             
             return service;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown configuration error';
+            
+            if (service.errorHandler) {
+                service.errorHandler.handleError(
+                    error instanceof Error ? error : new Error(errorMessage),
+                    {
+                        severity: ErrorSeverity.HIGH,
+                        source: 'MattermostService.start',
+                        code: 'SERVICE_STARTUP_FAILED',
+                        context: { phase: 'initialization' }
+                    }
+                );
+            }
+            
             safeLogger.error('Failed to start Mattermost service', error instanceof Error ? error : new Error(errorMessage));
             
             // Provide helpful guidance for common issues
@@ -70,65 +103,205 @@ export class MattermostService extends Service {
                 safeLogger.error('💡 Bot token may be invalid or bot account disabled');
             } else if (errorMessage.includes('Team access failed')) {
                 safeLogger.error('💡 Bot may not have access to the specified team');
+            } else if (errorMessage.includes('WebSocket')) {
+                safeLogger.error('💡 WebSocket connection failed - check network connectivity and server status');
             }
             
+            // Cleanup on failure
+            await service.cleanup();
             throw error;
         }
     }
 
+    /**
+     * Initialize all service components with proper error handling
+     */
     private async initializeComponents(): Promise<void> {
-        if (!this.mattermostConfig) {
-            throw new Error('Configuration not loaded');
+        if (!this.mattermostConfig || !this.errorHandler) {
+            throw new Error('Configuration or ErrorHandler not available');
         }
 
-        this.safeLogger.info('Initializing Mattermost REST client...');
-        
-        // Initialize REST API client
-        this.restClient = new RestClient(this.mattermostConfig);
-        await this.restClient.initialize();
-        
-        // Get bot and team information
-        this.botUser = await this.restClient.getBotUser();
-        this.team = await this.restClient.getTeam();
-        
-        this.safeLogger.info('REST client initialized successfully', {
-            botId: this.botUser.id,
-            botUsername: this.botUser.username,
-            teamId: this.team.id,
-            teamName: this.team.name
-        });
-        
-        // Set up basic message polling (we'll enhance this with WebSocket later)
-        this.startMessageMonitoring();
-        
-        this.safeLogger.info('✅ All components initialized successfully');
+        if (this.isInitializing) {
+            this.safeLogger.warn('Components already initializing');
+            return;
+        }
+
+        this.isInitializing = true;
+
+        try {
+            this.safeLogger.info('Initializing Mattermost service components...');
+            
+            // Initialize REST API client
+            this.safeLogger.info('📡 Initializing REST client...');
+            this.restClient = new RestClient(this.mattermostConfig);
+            await this.restClient.initialize();
+            
+            // Get bot and team information
+            this.botUser = await this.restClient.getBotUser();
+            this.team = await this.restClient.getTeam();
+            
+            this.safeLogger.info('✅ REST client initialized successfully', {
+                botId: this.botUser.id,
+                botUsername: this.botUser.username,
+                teamId: this.team.id,
+                teamName: this.team.name
+            });
+
+            // Initialize WebSocket client
+            this.safeLogger.info('🔌 Initializing WebSocket client...');
+            this.wsClient = new WebSocketClient(this.mattermostConfig, this.runtime!);
+            
+            // Set up WebSocket error handling
+            this.wsClient.on('reconnection_failed', (data) => {
+                this.errorHandler!.handleError(
+                    new Error(`WebSocket reconnection failed after ${data.attempts} attempts`),
+                    {
+                        severity: ErrorSeverity.HIGH,
+                        source: 'WebSocketClient.reconnection',
+                        code: 'WEBSOCKET_RECONNECTION_FAILED',
+                        context: data
+                    }
+                );
+            });
+
+            this.wsClient.on('reconnection_success', () => {
+                this.safeLogger.info('🔄 WebSocket reconnected successfully');
+            });
+
+            // Connect WebSocket
+            await this.wsClient.connect();
+            this.safeLogger.info('✅ WebSocket client connected and authenticated');
+
+            // Initialize Message Manager
+            this.safeLogger.info('💬 Initializing Message Manager...');
+            this.messageManager = new MessageManager(
+                this.mattermostConfig,
+                this.runtime!,
+                this.wsClient,
+                this.restClient
+            );
+            
+            await this.messageManager.initialize();
+            this.safeLogger.info('✅ Message Manager initialized successfully');
+            
+            this.safeLogger.info('🎉 All components initialized successfully');
+            
+        } catch (error) {
+            this.errorHandler.handleError(
+                error instanceof Error ? error : new Error('Component initialization failed'),
+                {
+                    severity: ErrorSeverity.HIGH,
+                    source: 'MattermostService.initializeComponents',
+                    code: 'COMPONENT_INIT_FAILED'
+                }
+            );
+            throw error;
+        } finally {
+            this.isInitializing = false;
+        }
     }
 
     /**
-     * Start monitoring for new messages (simplified polling approach)
+     * Start periodic health monitoring
      */
-    private startMessageMonitoring(): void {
-        this.safeLogger.info('🔍 Starting message monitoring...');
-        
-        // For now, we'll implement a simple demo that can respond to direct interactions
-        // In a full implementation, this would use WebSocket connections
-        this.safeLogger.info('📡 Message monitoring active - bot ready for interactions!');
-        this.safeLogger.info('💬 Try mentioning the bot or sending a direct message!');
+    private startHealthMonitoring(): void {
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
+        }
+
+        this.healthCheckInterval = setInterval(async () => {
+            try {
+                const health = await this.getHealth();
+                this.errorHandler?.reportHealth(health);
+            } catch (error) {
+                this.errorHandler?.handleError(
+                    error instanceof Error ? error : new Error('Health check failed'),
+                    {
+                        severity: ErrorSeverity.LOW,
+                        source: 'MattermostService.healthCheck',
+                        code: 'HEALTH_CHECK_FAILED'
+                    }
+                );
+            }
+        }, this.HEALTH_CHECK_INTERVAL);
+
+        this.safeLogger.info('🏥 Health monitoring started');
     }
 
     /**
-     * Send a message to a specific channel
+     * Get comprehensive service health status
+     */
+    async getHealth(): Promise<ServiceHealth> {
+        const now = Date.now();
+        const wsConnected = this.wsClient?.isConnected() ?? false;
+        let apiAvailable = false;
+
+        // Test API availability
+        try {
+            if (this.restClient?.isReady()) {
+                await this.restClient.testConnection();
+                apiAvailable = true;
+            }
+        } catch (error) {
+            // API not available
+        }
+
+        const messageManagerReady = this.messageManager?.isReady() ?? false;
+        const recentErrors = this.errorHandler?.getRecentErrors(5) ?? [];
+        const uptime = this.errorHandler?.getUptime() ?? 0;
+        const errorCounts = this.errorHandler?.getErrorCounts() ?? { low: 0, medium: 0, high: 0 };
+
+        // Determine overall status
+        let status: 'healthy' | 'degraded' | 'unhealthy';
+        if (wsConnected && apiAvailable && messageManagerReady) {
+            status = 'healthy';
+        } else if (apiAvailable || wsConnected) {
+            status = 'degraded';
+        } else {
+            status = 'unhealthy';
+        }
+
+        return {
+            status,
+            lastCheck: now,
+            details: {
+                wsConnected,
+                apiAvailable,
+                messageManagerReady,
+                errors: recentErrors,
+                uptime,
+                errorCounts,
+            },
+        };
+    }
+
+    /**
+     * Send a message with error handling and resilience
      */
     async sendMessage(channelId: string, content: string, options?: {
         rootId?: string;
         fileIds?: string[];
     }): Promise<any> {
         if (!this.isReady()) {
-            throw new Error('Service not ready');
+            const error = new Error('Service not ready');
+            this.errorHandler?.handleError(error, {
+                severity: ErrorSeverity.MEDIUM,
+                source: 'MattermostService.sendMessage',
+                code: 'SERVICE_NOT_READY',
+                context: { channelId }
+            });
+            throw error;
         }
         
         if (!this.restClient) {
-            throw new Error('REST client not initialized');
+            const error = new Error('REST client not initialized');
+            this.errorHandler?.handleError(error, {
+                severity: ErrorSeverity.HIGH,
+                source: 'MattermostService.sendMessage',
+                code: 'REST_CLIENT_NOT_INITIALIZED',
+                context: { channelId }
+            });
+            throw error;
         }
 
         try {
@@ -149,88 +322,31 @@ export class MattermostService extends Service {
             
             return post;
         } catch (error) {
-            this.safeLogger.error('❌ Failed to send message', error instanceof Error ? error : new Error('Unknown error'), { 
-                channelId
-            });
+            this.errorHandler?.handleError(
+                error instanceof Error ? error : new Error('Message send failed'),
+                {
+                    severity: ErrorSeverity.MEDIUM,
+                    source: 'MattermostService.sendMessage',
+                    code: 'MESSAGE_SEND_FAILED',
+                    context: { channelId, contentLength: content.length }
+                }
+            );
             throw error;
         }
     }
 
     /**
-     * Handle incoming messages and generate responses
-     */
-    async handleMessage(message: any): Promise<void> {
-        if (!this.runtime || !this.restClient || !this.botUser) {
-            this.safeLogger.warn('Cannot handle message - service not fully initialized');
-            return;
-        }
-
-        try {
-            // Skip messages from the bot itself
-            if (message.user_id === this.botUser.id) {
-                return;
-            }
-
-            // Skip system messages
-            if (message.type && message.type !== '') {
-                return;
-            }
-
-            const messageText = message.message?.trim();
-            if (!messageText) {
-                return;
-            }
-
-            this.safeLogger.info('📥 Processing incoming message', {
-                channelId: message.channel_id,
-                userId: message.user_id,
-                messageLength: messageText.length,
-                isDirectMessage: message.channel_type === 'D'
-            });
-
-            // Simple bot response logic (can be enhanced with ElizaOS reasoning)
-            let response: string;
-            
-            if (messageText.toLowerCase().includes('hello') || messageText.toLowerCase().includes('hi')) {
-                response = `Hello! 👋 I'm ${this.botUser.username}, your Mattermost AI assistant. How can I help you today?`;
-            } else if (messageText.toLowerCase().includes('help')) {
-                response = `I'm here to help! 🤖 I can:
-• Respond to messages and questions
-• Assist with information and tasks
-• Join channels and conversations
-
-Try asking me anything or saying "status" to see how I'm doing!`;
-            } else if (messageText.toLowerCase().includes('status')) {
-                const channels = await this.restClient.getChannelsForTeam();
-                response = `🟢 Bot Status: Online and ready!
-• Team: ${this.team.name}
-• Channels available: ${channels.length}
-• REST API: Connected ✅
-• Ready to assist! 🚀`;
-            } else {
-                response = `I received your message: "${messageText}"
-
-I'm still learning, but I'm here to help! Try saying "hello", "help", or "status" to see what I can do. 🤖`;
-            }
-
-            // Send the response
-            await this.sendMessage(message.channel_id, response, {
-                rootId: message.id // Reply in thread
-            });
-
-        } catch (error) {
-            this.safeLogger.error('❌ Error handling message', error instanceof Error ? error : new Error('Unknown error'), {
-                messageId: message.id
-            });
-        }
-    }
-
-    /**
-     * Join a channel by name
+     * Join a channel with error handling
      */
     async joinChannel(channelName: string): Promise<any> {
         if (!this.restClient) {
-            throw new Error('REST client not initialized');
+            const error = new Error('REST client not initialized');
+            this.errorHandler?.handleError(error, {
+                severity: ErrorSeverity.HIGH,
+                source: 'MattermostService.joinChannel',
+                code: 'REST_CLIENT_NOT_INITIALIZED'
+            });
+            throw error;
         }
 
         try {
@@ -246,22 +362,51 @@ I'm still learning, but I'm here to help! Try saying "hello", "help", or "status
             
             return channel;
         } catch (error) {
-            this.safeLogger.error(`❌ Failed to join channel: ${channelName}`, error instanceof Error ? error : new Error('Unknown error'));
+            this.errorHandler?.handleError(
+                error instanceof Error ? error : new Error('Channel join failed'),
+                {
+                    severity: ErrorSeverity.MEDIUM,
+                    source: 'MattermostService.joinChannel',
+                    code: 'CHANNEL_JOIN_FAILED',
+                    context: { channelName }
+                }
+            );
             throw error;
         }
     }
 
     /**
-     * Get all available channels
+     * Get all available channels with error handling
      */
     async getChannels(): Promise<any[]> {
         if (!this.restClient) {
-            throw new Error('REST client not initialized');
+            const error = new Error('REST client not initialized');
+            this.errorHandler?.handleError(error, {
+                severity: ErrorSeverity.MEDIUM,
+                source: 'MattermostService.getChannels',
+                code: 'REST_CLIENT_NOT_INITIALIZED'
+            });
+            throw error;
         }
 
-        return await this.restClient.getChannelsForTeam();
+        try {
+            return await this.restClient.getChannelsForTeam();
+        } catch (error) {
+            this.errorHandler?.handleError(
+                error instanceof Error ? error : new Error('Get channels failed'),
+                {
+                    severity: ErrorSeverity.LOW,
+                    source: 'MattermostService.getChannels',
+                    code: 'GET_CHANNELS_FAILED'
+                }
+            );
+            throw error;
+        }
     }
 
+    /**
+     * Get service configuration
+     */
     getConfiguration(): MattermostConfig {
         if (!this.mattermostConfig) {
             throw new Error('Service not initialized');
@@ -269,39 +414,125 @@ I'm still learning, but I'm here to help! Try saying "hello", "help", or "status
         return this.mattermostConfig;
     }
 
+    /**
+     * Get authentication token
+     */
     private getToken(): string {
         try {
             return getMattermostToken();
         } catch (error) {
-            this.safeLogger.error('Failed to get token', error);
+            this.errorHandler?.handleError(
+                error instanceof Error ? error : new Error('Token retrieval failed'),
+                {
+                    severity: ErrorSeverity.HIGH,
+                    source: 'MattermostService.getToken',
+                    code: 'TOKEN_RETRIEVAL_FAILED'
+                }
+            );
             throw new Error('Authentication token not available');
         }
     }
 
+    /**
+     * Check if service is ready for operations
+     */
     isReady(): boolean {
         return this.isConnected && 
                !!this.mattermostConfig && 
                isConfigLoaded() && 
                !!this.restClient && 
+               !!this.wsClient?.isConnected() &&
+               !!this.messageManager?.isReady() &&
                !!this.botUser && 
                !!this.team;
     }
 
+    /**
+     * Get error handler instance for external use
+     */
+    getErrorHandler(): ErrorHandler | undefined {
+        return this.errorHandler;
+    }
+
+    /**
+     * Get message manager instance for external use
+     */
+    getMessageManager(): MessageManager | undefined {
+        return this.messageManager;
+    }
+
+    /**
+     * Get WebSocket client instance for external use  
+     */
+    getWebSocketClient(): WebSocketClient | undefined {
+        return this.wsClient;
+    }
+
+    /**
+     * Get REST client instance for external use
+     */
+    getRestClient(): RestClient | undefined {
+        return this.restClient;
+    }
+
+    /**
+     * Cleanup and stop the service
+     */
+    private async cleanup(): Promise<void> {
+        this.safeLogger.info('🧹 Cleaning up service components...');
+
+        // Stop health monitoring
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
+            this.healthCheckInterval = undefined;
+        }
+
+        // Cleanup message manager
+        if (this.messageManager) {
+            try {
+                await this.messageManager.cleanup();
+            } catch (error) {
+                this.safeLogger.warn('Error cleaning up message manager:', error);
+            }
+        }
+
+        // Disconnect WebSocket
+        if (this.wsClient) {
+            try {
+                await this.wsClient.disconnect();
+            } catch (error) {
+                this.safeLogger.warn('Error disconnecting WebSocket:', error);
+            }
+        }
+
+        // Clear references
+        this.restClient = undefined;
+        this.wsClient = undefined;
+        this.messageManager = undefined;
+        this.botUser = undefined;
+        this.team = undefined;
+        this.isConnected = false;
+    }
+
+    /**
+     * Stop the service completely
+     */
     async stop(): Promise<void> {
-        elizaLogger.info('*** STOPPING MATTERMOST SERVICE ***');
+        this.safeLogger.info('*** STOPPING MATTERMOST SERVICE ***');
         
         try {
-            // TODO: Clean up WebSocket connections when implemented
-            // TODO: Clean up any polling intervals
-            
-            this.isConnected = false;
-            this.restClient = undefined;
-            this.botUser = undefined;
-            this.team = undefined;
-            
-            elizaLogger.info('*** MATTERMOST SERVICE STOPPED ***');
+            await this.cleanup();
+            this.safeLogger.info('*** MATTERMOST SERVICE STOPPED ***');
         } catch (error) {
-            elizaLogger.error('Failed to stop Mattermost service:', error);
+            this.errorHandler?.handleError(
+                error instanceof Error ? error : new Error('Service stop failed'),
+                {
+                    severity: ErrorSeverity.MEDIUM,
+                    source: 'MattermostService.stop',
+                    code: 'SERVICE_STOP_FAILED'
+                }
+            );
+            this.safeLogger.error('Failed to stop Mattermost service:', error);
             throw error;
         }
     }
@@ -309,7 +540,7 @@ I'm still learning, but I'm here to help! Try saying "hello", "help", or "status
 
 const mattermostPlugin = {
     name: "mattermost",
-    description: "Mattermost platform integration service",
+    description: "Mattermost platform integration service with real-time messaging and resilience",
     services: [MattermostService]
 };
 
