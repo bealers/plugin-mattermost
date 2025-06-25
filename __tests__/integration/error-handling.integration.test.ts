@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ErrorHandler, ErrorSeverity, ServiceHealth } from '../src/utils/error-handler';
-import { MattermostService } from '../src/services/mattermost.service';
+import { ErrorHandler, ErrorSeverity, ServiceHealth } from '../../src/utils/error-handler';
+import { MattermostService } from '../../src/services/mattermost.service';
 
 // Mock ElizaOS runtime
 const mockRuntime = {

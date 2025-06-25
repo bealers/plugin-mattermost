@@ -1,10 +1,10 @@
 import { describe, expect, it, vi, afterAll, beforeAll, beforeEach } from 'vitest';
 import { config } from 'dotenv';
-import { RestClient } from '../src/clients/rest.client';
-import { WebSocketClient } from '../src/clients/websocket.client';
-import { loadConfig } from '../src/config';
-import { createSafeLogger } from '../src/config/credentials';
-import type { MattermostConfig } from '../src/config';
+import { RestClient } from '../../src/clients/rest.client';
+import { WebSocketClient } from '../../src/clients/websocket.client';
+import { loadConfig } from '../../src/config';
+import { createSafeLogger } from '../../src/config/credentials';
+import type { MattermostConfig } from '../../src/config';
 import type { IAgentRuntime } from '@elizaos/core';
 
 // Load .env file before anything else

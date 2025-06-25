@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 
-import { loadConfig } from '../src/config';
-import { WebSocketClient } from '../src/clients/websocket.client';
+import { loadConfig } from '../../src/config';
+import { WebSocketClient } from '../../src/clients/websocket.client';
 import { elizaLogger } from '@elizaos/core';
 
 async function testWebSocketEvents() {

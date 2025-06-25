@@ -2,13 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   resetConfig,
   isConfigLoaded
-} from '../src/config';
+} from '../../src/config';
 import { 
   credentialManager, 
   SecureCredential,
   redactSensitiveData,
   createSafeErrorMessage 
-} from '../src/config/credentials';
+} from '../../src/config/credentials';
 
 describe('Configuration Management - Core Tests', () => {
   beforeEach(() => {

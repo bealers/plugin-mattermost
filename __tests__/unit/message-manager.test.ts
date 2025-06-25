@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi, MockedFunction } from 'vitest';
 import { IAgentRuntime, ModelType } from '@elizaos/core';
-import { MessageManager } from '../src/managers/message.manager';
-import { WebSocketClient } from '../src/clients/websocket.client';
-import { RestClient } from '../src/clients/rest.client';
-import { MattermostConfig } from '../src/config';
-import { createMockConfig, createMockRuntime, createMockWebSocketClient, createMockRestClient } from './test-utils';
+import { MessageManager } from '../../src/managers/message.manager';
+import { WebSocketClient } from '../../src/clients/websocket.client';
+import { RestClient } from '../../src/clients/rest.client';
+import { MattermostConfig } from '../../src/config';
+import { createMockConfig, createMockRuntime, createMockWebSocketClient, createMockRestClient } from '../utils/test-utils';
 
 describe('MessageManager', () => {
   let messageManager: MessageManager;

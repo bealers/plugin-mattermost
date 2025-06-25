@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { WebSocketClient } from '../src/clients/websocket.client';
+import { WebSocketClient } from '../../src/clients/websocket.client';
 import { elizaLogger } from '@elizaos/core';
 
 // Mock WebSocket

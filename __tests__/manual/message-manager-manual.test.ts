@@ -5,10 +5,10 @@
  * Tests the complete message processing pipeline including error handling and resilience
  */
 
-import { loadConfig } from '../src/config';
-import { MessageManager } from '../src/managers/message.manager';
-import { WebSocketClient } from '../src/clients/websocket.client';
-import { RestClient } from '../src/clients/rest.client';
+import { loadConfig } from '../../src/config';
+import { MessageManager } from '../../src/managers/message.manager';
+import { WebSocketClient } from '../../src/clients/websocket.client';
+import { RestClient } from '../../src/clients/rest.client';
 import { IAgentRuntime, ModelType } from '@elizaos/core';
 
 // Mock runtime for testing (including error simulation)

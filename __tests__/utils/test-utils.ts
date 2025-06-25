@@ -8,7 +8,7 @@ import {
   UUID,
   logger,
 } from '@elizaos/core';
-import { MattermostConfig } from '../src/config';
+import { MattermostConfig } from '../../src/config';
 
 /**
  * Creates a mock runtime for testing

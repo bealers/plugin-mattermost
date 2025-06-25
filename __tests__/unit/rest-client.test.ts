@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { RestClient } from '../src/clients/rest.client';
-import type { MattermostConfig } from '../src/config';
+import { RestClient } from '../../src/clients/rest.client';
+import type { MattermostConfig } from '../../src/config';
 
 // Create a global mock client that can be accessed in tests
 const mockClient = {

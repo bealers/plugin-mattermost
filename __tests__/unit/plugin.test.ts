@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
-import mattermostPlugin from '../src/index';
-import { MattermostService } from '../src/services/mattermost.service';
+import mattermostPlugin from '../../src/index';
+import { MattermostService } from '../../src/services/mattermost.service';
 import { elizaLogger } from '@elizaos/core';
 import dotenv from 'dotenv';
 

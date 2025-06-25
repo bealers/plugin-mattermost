@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import 'dotenv/config';
-import { WebSocketClient } from '../src/clients/websocket.client';
-import { loadConfig } from '../src/config';
+import { WebSocketClient } from '../../src/clients/websocket.client';
+import { loadConfig } from '../../src/config';
 import { elizaLogger } from '@elizaos/core';
 
 /**
