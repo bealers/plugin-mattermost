@@ -1,6 +1,6 @@
 import { IAgentRuntime } from '@elizaos/core';
 import { RestClient } from '../clients/rest.client';
-import { Channel } from '@mattermost/types';
+import { createSafeLogger } from '../config/credentials';
 
 /**
  * Channel Manager for handling channel operations and membership management
@@ -18,10 +18,12 @@ export class ChannelManager {
   private botUserId: string | null = null;
   private teamId: string | null = null;
   private isInitialized = false;
+  private logger: ReturnType<typeof createSafeLogger>;
   
   constructor(restClient: RestClient, runtime: IAgentRuntime) {
     this.restClient = restClient;
     this.runtime = runtime;
+    this.logger = createSafeLogger(console);
   }
   
   /**
@@ -47,10 +49,11 @@ export class ChannelManager {
       }
       
       this.isInitialized = true;
-      this.runtime.logger.info(`Channel manager initialized with ${this.joinedChannels.size} joined channels`);
+      this.logger.info(`Channel manager initialized with ${this.joinedChannels.size} joined channels`);
     } catch (error) {
-      this.runtime.logger.error(`Failed to initialize channel manager: ${error.message}`);
-      throw new Error(`Channel manager initialization failed: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Failed to initialize channel manager`, err);
+      throw new Error(`Channel manager initialization failed: ${err.message}`);
     }
   }
   
@@ -62,7 +65,7 @@ export class ChannelManager {
     this.botUserId = null;
     this.teamId = null;
     this.isInitialized = false;
-    this.runtime.logger.info('Channel manager cleaned up');
+    this.logger.info('Channel manager cleaned up');
   }
 
   /**
@@ -78,7 +81,7 @@ export class ChannelManager {
 
       // Skip if already joined
       if (this.joinedChannels.has(channelId)) {
-        this.runtime.logger.debug(`Already joined channel: ${channelId}`);
+        this.logger.debug(`Already joined channel: ${channelId}`);
         return true;
       }
       
@@ -89,7 +92,7 @@ export class ChannelManager {
       if (channel.type === 'D' || channel.type === 'G') {
         // Direct and group messages don't need explicit joining
         this.joinedChannels.add(channelId);
-        this.runtime.logger.debug(`Added direct/group channel to tracking: ${channelId}`);
+        this.logger.debug(`Added direct/group channel to tracking: ${channelId}`);
         return true;
       }
       
@@ -99,10 +102,11 @@ export class ChannelManager {
       // Track joined channel
       this.joinedChannels.add(channelId);
       
-      this.runtime.logger.info(`Joined channel: ${channel.display_name} (${channelId})`);
+      this.logger.info(`Joined channel: ${channel.display_name} (${channelId})`);
       return true;
     } catch (error) {
-      this.runtime.logger.error(`Error joining channel ${channelId}: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error joining channel ${channelId}`, err);
       return false;
     }
   }
@@ -126,7 +130,8 @@ export class ChannelManager {
       const channel = await this.restClient.getChannelByName(this.teamId, channelName);
       return await this.joinChannel(channel.id);
     } catch (error) {
-      this.runtime.logger.error(`Error joining channel by name ${channelName}: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error joining channel by name ${channelName}`, err);
       return false;
     }
   }
@@ -144,7 +149,7 @@ export class ChannelManager {
 
       // Skip if not joined
       if (!this.joinedChannels.has(channelId)) {
-        this.runtime.logger.debug(`Not joined to channel: ${channelId}`);
+        this.logger.debug(`Not joined to channel: ${channelId}`);
         return true;
       }
       
@@ -155,7 +160,7 @@ export class ChannelManager {
       if (channel.type === 'D' || channel.type === 'G') {
         // Can't leave direct and group messages, but remove from tracking
         this.joinedChannels.delete(channelId);
-        this.runtime.logger.debug(`Removed direct/group channel from tracking: ${channelId}`);
+        this.logger.debug(`Removed direct/group channel from tracking: ${channelId}`);
         return true;
       }
       
@@ -165,10 +170,11 @@ export class ChannelManager {
       // Remove from tracked channels
       this.joinedChannels.delete(channelId);
       
-      this.runtime.logger.info(`Left channel: ${channel.display_name} (${channelId})`);
+      this.logger.info(`Left channel: ${channel.display_name} (${channelId})`);
       return true;
     } catch (error) {
-      this.runtime.logger.error(`Error leaving channel ${channelId}: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error leaving channel ${channelId}`, err);
       return false;
     }
   }
@@ -193,10 +199,11 @@ export class ChannelManager {
       const channel = await this.restClient.getChannel(channelId);
       
       // If we can get channel info, we have access
-      this.runtime.logger.debug(`Validated access to channel: ${channel.display_name} (${channelId})`);
+      this.logger.debug(`Validated access to channel: ${channel.display_name} (${channelId})`);
       return true;
     } catch (error) {
-      this.runtime.logger.warn(`No access to channel ${channelId}: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.warn(`No access to channel ${channelId}`, { error: err.message });
       return false;
     }
   }
@@ -215,7 +222,8 @@ export class ChannelManager {
       const channel = await this.restClient.getChannel(channelId);
       return channel.type;
     } catch (error) {
-      this.runtime.logger.error(`Error getting channel type for ${channelId}: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error getting channel type for ${channelId}`, err);
       return 'unknown';
     }
   }
@@ -264,9 +272,10 @@ export class ChannelManager {
         this.joinedChannels.add(channel.id);
       }
       
-      this.runtime.logger.info(`Refreshed channel memberships: ${this.joinedChannels.size} channels`);
+      this.logger.info(`Refreshed channel memberships: ${this.joinedChannels.size} channels`);
     } catch (error) {
-      this.runtime.logger.error(`Error refreshing channel memberships: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error refreshing channel memberships`, err);
       throw error;
     }
   }

@@ -1,5 +1,6 @@
 import { IAgentRuntime } from '@elizaos/core';
 import { RestClient } from '../clients/rest.client';
+import { createSafeLogger } from '../config/credentials';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -21,11 +22,13 @@ export class AttachmentManager {
   private runtime: IAgentRuntime;
   private tempDir: string;
   private isInitialized = false;
+  private logger: ReturnType<typeof createSafeLogger>;
   
   constructor(restClient: RestClient, runtime: IAgentRuntime) {
     this.restClient = restClient;
     this.runtime = runtime;
     this.tempDir = path.join(os.tmpdir(), 'mattermost-elizaos-files');
+    this.logger = createSafeLogger(console);
   }
   
   /**
@@ -40,12 +43,13 @@ export class AttachmentManager {
       }
       
       this.isInitialized = true;
-      this.runtime.logger.info('Attachment manager initialized', {
+      this.logger.info('Attachment manager initialized', {
         tempDir: this.tempDir
       });
     } catch (error) {
-      this.runtime.logger.error(`Failed to initialize attachment manager: ${error.message}`);
-      throw new Error(`Attachment manager initialization failed: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Failed to initialize attachment manager`, err);
+      throw new Error(`Attachment manager initialization failed: ${err.message}`);
     }
   }
   
@@ -61,15 +65,15 @@ export class AttachmentManager {
           try {
             fs.unlinkSync(path.join(this.tempDir, file));
           } catch (error) {
-            this.runtime.logger.warn(`Error deleting temp file ${file}: ${error.message}`);
+            this.logger.warn(`Error deleting temp file ${file}: ${error.message}`);
           }
         }
       }
       
       this.isInitialized = false;
-      this.runtime.logger.info('Attachment manager cleaned up');
+      this.logger.info('Attachment manager cleaned up');
     } catch (error) {
-      this.runtime.logger.warn(`Error cleaning up temp files: ${error.message}`);
+      this.logger.warn(`Error cleaning up temp files: ${error.message}`);
     }
   }
   
@@ -86,7 +90,7 @@ export class AttachmentManager {
       return;
     }
     
-    this.runtime.logger.info(`Processing ${fileIds.length} file attachments`, {
+    this.logger.info(`Processing ${fileIds.length} file attachments`, {
       fileIds,
       channelId,
       postId
@@ -104,28 +108,28 @@ export class AttachmentManager {
         const filePath = path.join(this.tempDir, fileInfo.name);
         fs.writeFileSync(filePath, Buffer.from(fileData));
         
-        this.runtime.logger.debug(`File saved to temp directory`, {
+        this.logger.debug(`File saved to temp directory`, {
           fileId,
           filename: fileInfo.name,
           filePath,
           size: fileInfo.size
         });
         
-        // Emit file received event for ElizaOS processing
-        this.runtime.emit('FILE_RECEIVED', {
-          id: fileId,
-          name: fileInfo.name,
-          path: filePath,
-          size: fileInfo.size,
-          type: fileInfo.mime_type,
-          channelId,
-          postId,
-        });
+        // TODO: Emit file received event for ElizaOS processing when available
+        // this.runtime.emit('FILE_RECEIVED', {
+        //   id: fileId,
+        //   name: fileInfo.name,
+        //   path: filePath,
+        //   size: fileInfo.size,
+        //   type: fileInfo.mime_type,
+        //   channelId,
+        //   postId,
+        // });
         
         // Process file based on type
         await this.processFile(fileInfo, filePath, channelId, postId);
       } catch (error) {
-        this.runtime.logger.error(`Error processing file ${fileId}: ${error.message}`);
+        this.logger.error(`Error processing file ${fileId}: ${error.message}`);
         
         // Send error message to channel
         try {
@@ -135,7 +139,7 @@ export class AttachmentManager {
             { rootId: postId }
           );
         } catch (sendError) {
-          this.runtime.logger.error(`Error sending error message: ${sendError.message}`);
+          this.logger.error(`Error sending error message: ${sendError.message}`);
         }
       }
     }
@@ -156,7 +160,7 @@ export class AttachmentManager {
     // Process file based on type
     const mimeType = fileInfo.mime_type || mime.lookup(filePath) || 'application/octet-stream';
     
-    this.runtime.logger.debug(`Processing file by type`, {
+    this.logger.debug(`Processing file by type`, {
       filename: fileInfo.name,
       mimeType,
       size: fileInfo.size
@@ -184,7 +188,7 @@ export class AttachmentManager {
    * @private
    */
   private async processImage(filePath: string, channelId: string, postId: string, fileInfo: any): Promise<void> {
-    this.runtime.logger.debug(`Processing image file`, {
+    this.logger.debug(`Processing image file`, {
       filename: fileInfo.name,
       mimeType: fileInfo.mime_type
     });
@@ -207,7 +211,7 @@ export class AttachmentManager {
    * @private
    */
   private async processPdf(filePath: string, channelId: string, postId: string, fileInfo: any): Promise<void> {
-    this.runtime.logger.debug(`Processing PDF file`, {
+    this.logger.debug(`Processing PDF file`, {
       filename: fileInfo.name,
       size: fileInfo.size
     });
@@ -230,7 +234,7 @@ export class AttachmentManager {
    * @private
    */
   private async processOfficeDocument(filePath: string, channelId: string, postId: string, fileInfo: any): Promise<void> {
-    this.runtime.logger.debug(`Processing Office document`, {
+    this.logger.debug(`Processing Office document`, {
       filename: fileInfo.name,
       mimeType: fileInfo.mime_type
     });
@@ -254,7 +258,7 @@ export class AttachmentManager {
    */
   private async processTextFile(filePath: string, channelId: string, postId: string, fileInfo: any): Promise<void> {
     try {
-      this.runtime.logger.debug(`Processing text file`, {
+      this.logger.debug(`Processing text file`, {
         filename: fileInfo.name,
         size: fileInfo.size
       });
@@ -278,7 +282,7 @@ export class AttachmentManager {
         { rootId: postId }
       );
     } catch (error) {
-      this.runtime.logger.error(`Error reading text file: ${error.message}`);
+      this.logger.error(`Error reading text file: ${error.message}`);
       await this.restClient.createPost(
         channelId,
         `I received the text file **${fileInfo.name}** but encountered an error reading its contents: ${error.message}`,
@@ -296,7 +300,7 @@ export class AttachmentManager {
     }
     
     try {
-      this.runtime.logger.debug(`Uploading file`, {
+      this.logger.debug(`Uploading file`, {
         channelId,
         fileName,
         fileSize: fileData.length
@@ -307,7 +311,7 @@ export class AttachmentManager {
       
       const fileId = uploadResult.file_infos[0].id;
       
-      this.runtime.logger.info(`File uploaded successfully`, {
+      this.logger.info(`File uploaded successfully`, {
         channelId,
         fileName,
         fileId
@@ -315,7 +319,7 @@ export class AttachmentManager {
       
       return fileId;
     } catch (error) {
-      this.runtime.logger.error(`Error uploading file: ${error.message}`);
+      this.logger.error(`Error uploading file: ${error.message}`);
       throw error;
     }
   }
@@ -325,7 +329,7 @@ export class AttachmentManager {
    */
   async generateAndUploadTextFile(channelId: string, content: string, fileName: string, postId?: string): Promise<string> {
     try {
-      this.runtime.logger.info('Generating and uploading text file', { 
+      this.logger.info('Generating and uploading text file', { 
         fileName, 
         contentLength: content.length,
         channelId 
@@ -343,14 +347,14 @@ export class AttachmentManager {
         fileIds: [fileId]
       });
       
-      this.runtime.logger.info('Text file generated and uploaded successfully', { 
+      this.logger.info('Text file generated and uploaded successfully', { 
         fileName, 
         fileId 
       });
       
       return fileId;
     } catch (error) {
-      this.runtime.logger.error('Error generating and uploading text file', error, {
+      this.logger.error('Error generating and uploading text file', error, {
         fileName,
         contentLength: content.length,
         channelId
@@ -364,7 +368,7 @@ export class AttachmentManager {
    */
   async generateAndUploadCSV(channelId: string, data: any[], fileName: string, postId?: string): Promise<string> {
     try {
-      this.runtime.logger.info('Generating and uploading CSV file', { 
+      this.logger.info('Generating and uploading CSV file', { 
         fileName, 
         rowCount: data.length,
         channelId 
@@ -414,7 +418,7 @@ export class AttachmentManager {
         fileIds: [fileId]
       });
       
-      this.runtime.logger.info('CSV file generated and uploaded successfully', { 
+      this.logger.info('CSV file generated and uploaded successfully', { 
         fileName, 
         fileId,
         rowCount: data.length,
@@ -423,7 +427,7 @@ export class AttachmentManager {
       
       return fileId;
     } catch (error) {
-      this.runtime.logger.error('Error generating and uploading CSV file', error, {
+      this.logger.error('Error generating and uploading CSV file', error, {
         fileName,
         rowCount: data?.length,
         channelId
@@ -437,7 +441,7 @@ export class AttachmentManager {
    */
   async generateAndUploadMarkdownReport(channelId: string, title: string, content: string, postId?: string): Promise<string> {
     try {
-      this.runtime.logger.info('Generating and uploading markdown report', { 
+      this.logger.info('Generating and uploading markdown report', { 
         title, 
         contentLength: content.length,
         channelId 
@@ -463,7 +467,7 @@ export class AttachmentManager {
         fileIds: [fileId]
       });
       
-      this.runtime.logger.info('Markdown report generated and uploaded successfully', { 
+      this.logger.info('Markdown report generated and uploaded successfully', { 
         title,
         fileName,
         fileId 
@@ -471,7 +475,7 @@ export class AttachmentManager {
       
       return fileId;
     } catch (error) {
-      this.runtime.logger.error('Error generating and uploading markdown report', error, {
+      this.logger.error('Error generating and uploading markdown report', error, {
         title,
         contentLength: content.length,
         channelId
@@ -485,7 +489,7 @@ export class AttachmentManager {
    */
   async generateAndUploadJSON(channelId: string, data: any, fileName: string, postId?: string): Promise<string> {
     try {
-      this.runtime.logger.info('Generating and uploading JSON file', { 
+      this.logger.info('Generating and uploading JSON file', { 
         fileName, 
         channelId 
       });
@@ -506,14 +510,14 @@ export class AttachmentManager {
         fileIds: [fileId]
       });
       
-      this.runtime.logger.info('JSON file generated and uploaded successfully', { 
+      this.logger.info('JSON file generated and uploaded successfully', { 
         fileName, 
         fileId 
       });
       
       return fileId;
     } catch (error) {
-      this.runtime.logger.error('Error generating and uploading JSON file', error, {
+      this.logger.error('Error generating and uploading JSON file', error, {
         fileName,
         channelId
       });

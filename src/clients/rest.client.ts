@@ -566,7 +566,19 @@ export class RestClient extends BaseClient {
       try {
         this.logger.debug('Downloading file', { fileId });
         
-        const fileData = await this.client.getFilePreview(fileId);
+        // Use fetch to download the file using the file URL
+        const fileUrl = this.client.getFileUrl(fileId, Date.now());
+        const response = await fetch(fileUrl, {
+          headers: {
+            'Authorization': `Bearer ${this.client.getToken()}`,
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const fileData = await response.arrayBuffer();
         
         this.logger.debug('File downloaded successfully', { 
           fileId,

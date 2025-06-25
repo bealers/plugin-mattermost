@@ -1362,9 +1362,10 @@ END OF FILE`;
             });
           });
         } catch (error) {
-          this.logger.warn('Failed to process file attachments', error, {
+          this.logger.warn('Failed to process file attachments', {
             postId: post.id,
-            fileIds: post.file_ids
+            fileIds: post.file_ids,
+            error: error instanceof Error ? error.message : String(error)
           });
         }
       }

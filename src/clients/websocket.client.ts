@@ -295,8 +295,7 @@ export class WebSocketClient {
       
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error(`Error handling WebSocket message`, {
-        error: err.message,
+      this.logger.error(`Error handling WebSocket message`, err, {
         data: data.toString().substring(0, 200) // Log first 200 chars for debugging
       });
     }
@@ -306,8 +305,7 @@ export class WebSocketClient {
    * Handle WebSocket errors
    */
   private handleError(error: Error): void {
-    this.logger.error(`WebSocket error`, {
-      error: error.message,
+    this.logger.error(`WebSocket error`, error, {
       reconnectAttempts: this.reconnectAttempts
     });
   }
