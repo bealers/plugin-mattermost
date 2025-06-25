@@ -8,6 +8,7 @@ import {
   UUID,
   logger,
 } from '@elizaos/core';
+import { MattermostConfig } from '../src/config';
 
 /**
  * Creates a mock runtime for testing
@@ -53,6 +54,83 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
 
   // Merge with overrides
   return mockRuntime;
+}
+
+/**
+ * Creates a mock MattermostConfig for testing
+ *
+ * @param overrides - Optional overrides for the default config properties
+ * @returns A mock config object
+ */
+export function createMockConfig(overrides: Partial<MattermostConfig> = {}): MattermostConfig {
+  return {
+    serverUrl: 'https://test.mattermost.com',
+    token: 'test-token',
+    teamName: 'test-team',
+    botUsername: 'test-bot',
+    channels: ['general'],
+    enableDirectMessages: true,
+    enableChannelMessages: true,
+    enableThreading: true,
+    apiVersion: 'v4',
+    connectionTimeout: 30000,
+    messageRetryAttempts: 3,
+    ...overrides,
+  } as MattermostConfig;
+}
+
+/**
+ * Creates a mock WebSocketClient for testing
+ *
+ * @param overrides - Optional overrides for the default client methods
+ * @returns A mock WebSocket client
+ */
+export function createMockWebSocketClient(overrides: any = {}) {
+  return {
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn(),
+    connect: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    isConnected: vi.fn().mockReturnValue(true),
+    ...overrides,
+  };
+}
+
+/**
+ * Creates a mock RestClient for testing
+ *
+ * @param overrides - Optional overrides for the default client methods
+ * @returns A mock REST client
+ */
+export function createMockRestClient(overrides: any = {}) {
+  return {
+    initialize: vi.fn().mockResolvedValue(undefined),
+    isReady: vi.fn().mockReturnValue(true),
+    getBotUser: vi.fn().mockResolvedValue({
+      id: 'mock-bot-user-id',
+      username: 'mock-bot',
+      email: 'mock-bot@test.com',
+    }),
+    getTeam: vi.fn().mockResolvedValue({
+      id: 'mock-team-id',
+      name: 'Mock Team',
+    }),
+    createPost: vi.fn().mockResolvedValue({
+      id: 'mock-post-id',
+      create_at: Date.now(),
+    }),
+    getPostsAroundPost: vi.fn().mockResolvedValue({
+      posts: {},
+    }),
+    getChannelsForTeam: vi.fn().mockResolvedValue([]),
+    getChannelByName: vi.fn().mockResolvedValue({
+      id: 'mock-channel-id',
+      name: 'mock-channel',
+    }),
+    joinChannel: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
 }
 
 /**

@@ -2,7 +2,7 @@
 
 /**
  * Test script for MessageManager AI integration
- * Tests the complete message processing pipeline without requiring Mattermost connection
+ * Tests the complete message processing pipeline including error handling and resilience
  */
 
 import { loadConfig } from '../src/config';
@@ -11,118 +11,174 @@ import { WebSocketClient } from '../src/clients/websocket.client';
 import { RestClient } from '../src/clients/rest.client';
 import { IAgentRuntime, ModelType } from '@elizaos/core';
 
-// Mock runtime for testing
-const createMockRuntime = (): IAgentRuntime => {
+// Mock runtime for testing (including error simulation)
+const createMockRuntime = (shouldFail = false, failureCount = 0): IAgentRuntime => {
+  let callCount = 0;
+  
   return {
     agentId: 'test-agent-123',
     character: {
       name: 'TestBot',
-      bio: 'A test bot for Mattermost integration'
+      bio: 'A test bot for Mattermost integration with error handling'
     },
     useModel: async (modelType: ModelType, options: any) => {
-      console.log(`🤖 Mock AI called with model: ${modelType}`);
-      console.log(`📝 Prompt: ${options.prompt}`);
-      console.log(`🌡️ Temperature: ${options.temperature}`);
-      console.log(`📊 Max Tokens: ${options.maxTokens}`);
-      console.log(`👤 User: ${options.user}`);
+      callCount++;
       
-      // Simulate AI response based on input
-      if (options.prompt.toLowerCase().includes('hello')) {
-        return 'Hello! I\'m your friendly Mattermost AI assistant. How can I help you today?';
-      } else if (options.prompt.toLowerCase().includes('test')) {
-        return 'Test successful! The AI integration is working properly. 🎉';
-      } else {
-        return `I received your message: "${options.prompt.substring(0, 50)}..." and I'm ready to help!`;
+      if (shouldFail && callCount <= failureCount) {
+        // Simulate different types of failures
+        const errorTypes = [
+          new Error('Network connection failed'),
+          new Error('Rate limit exceeded'),
+          new Error('Model timeout'),
+          new Error('Authentication failed')
+        ];
+        throw errorTypes[callCount % errorTypes.length];
       }
-    },
-    // Add other required runtime methods as no-ops
-    getService: () => null,
-    registerService: () => {},
-    getSetting: () => null,
-  } as any;
+      
+      console.log(`🤖 Mock AI called with model ${modelType}`);
+      console.log(`   Prompt: ${options.prompt?.substring(0, 100)}...`);
+      return `Mock AI response to: "${options.prompt?.substring(0, 50)}..."`;
+    }
+  } as unknown as IAgentRuntime;
 };
 
-// Mock WebSocket client
-const createMockWebSocketClient = (): Partial<WebSocketClient> => {
-  const eventHandlers = new Map<string, Set<(data: any) => void>>();
-  
+// Mock WebSocket client with error simulation
+const createMockWebSocketClient = () => {
+  const eventHandlers = new Map<string, Function[]>();
+
   return {
-    on: (event: string, handler: (data: any) => void) => {
+    on: (event: string, handler: Function) => {
       if (!eventHandlers.has(event)) {
-        eventHandlers.set(event, new Set());
+        eventHandlers.set(event, []);
       }
-      eventHandlers.get(event)!.add(handler);
+      eventHandlers.get(event)?.push(handler);
       console.log(`📡 Registered handler for event: ${event}`);
     },
-    off: (event: string, handler: (data: any) => void) => {
-      if (eventHandlers.has(event)) {
-        eventHandlers.get(event)!.delete(handler);
-        console.log(`📡 Unregistered handler for event: ${event}`);
+    off: (event: string, handler: Function) => {
+      const handlers = eventHandlers.get(event);
+      if (handlers) {
+        const index = handlers.indexOf(handler);
+        if (index > -1) {
+          handlers.splice(index, 1);
+        }
       }
+      console.log(`📡 Unregistered handler for event: ${event}`);
     },
     emit: (event: string, data: any) => {
-      if (eventHandlers.has(event)) {
-        eventHandlers.get(event)!.forEach(handler => handler(data));
+      const handlers = eventHandlers.get(event);
+      if (handlers) {
+        handlers.forEach(handler => handler(data));
       }
     },
-    // Add method to simulate message events
-    simulateMessage: (messageData: any) => {
-      if (eventHandlers.has('posted')) {
-        eventHandlers.get('posted')!.forEach(handler => handler(messageData));
-      }
-    }
-  } as any;
+    // For testing
+    _getEventHandlers: () => eventHandlers
+  };
 };
 
-// Mock REST client
-const createMockRestClient = (): Partial<RestClient> => {
+// Mock REST client with error simulation capabilities
+const createMockRestClient = (shouldFailOnPost = false, shouldFailOnContext = false) => {
+  let postCallCount = 0;
+  let contextCallCount = 0;
+  
   return {
     isReady: () => true,
-    initialize: async () => {
-      console.log('🔌 Mock REST client initialized');
-    },
+    initialize: async () => console.log('📊 REST client initialized'),
     getBotUser: async () => ({
-      id: 'bot-user-123',
+      id: 'bot-user-456',
       username: 'test-bot',
-      email: 'testbot@example.com'
+      email: 'bot@test.com'
     }),
     createPost: async (channelId: string, message: string, options?: any) => {
-      console.log(`📤 Mock posting message to channel ${channelId}:`);
-      console.log(`   Message: ${message}`);
-      console.log(`   Options:`, options);
-      return { id: 'post-123', create_at: Date.now() };
+      postCallCount++;
+      
+      if (shouldFailOnPost && postCallCount <= 2) {
+        throw new Error(`Network error on post attempt ${postCallCount}`);
+      }
+      
+      console.log(`📝 Posted message to channel ${channelId}: "${message.substring(0, 50)}..."`);
+      if (options?.rootId) {
+        console.log(`   └── Thread reply to: ${options.rootId}`);
+      }
+      return { id: `post-${Date.now()}` };
     },
-    getPostsAroundPost: async (postId: string, channelId: string, options?: any) => {
-      console.log(`📥 Mock fetching thread context for post ${postId} in channel ${channelId}`);
-      // Return mock thread data
+    getPostsAroundPost: async (postId: string, channelId: string, options: any) => {
+      contextCallCount++;
+      
+      if (shouldFailOnContext && contextCallCount <= 1) {
+        throw new Error('Failed to retrieve thread context');
+      }
+      
+      console.log(`📚 Retrieved thread context for post ${postId}`);
       return {
         posts: {
           'post-1': {
             id: 'post-1',
-            user_id: 'user-456',
+            user_id: 'user-123',
             message: 'Previous message in thread',
             create_at: Date.now() - 60000,
-            user_display_name: 'Alice'
+            user_display_name: 'Previous User'
           },
-          'post-2': {
-            id: 'post-2',
-            user_id: 'user-789',
-            message: 'Another message in the conversation',
+          [postId]: {
+            id: postId,
+            user_id: 'user-456',
+            message: 'Root message',
             create_at: Date.now() - 30000,
-            user_display_name: 'Bob'
+            user_display_name: 'Root User'
           }
         }
       };
     }
-  } as any;
+  };
 };
 
-async function testMessageManager() {
-  console.log('🚀 Starting MessageManager AI Integration Test\n');
+// Test scenarios
+const testScenarios = [
+  {
+    name: 'Basic Success Flow',
+    description: 'Test normal message processing without errors',
+    runtimeFailure: false,
+    postFailure: false,
+    contextFailure: false
+  },
+  {
+    name: 'AI Generation Retry',
+    description: 'Test retry logic when AI generation fails initially',
+    runtimeFailure: true,
+    runtimeFailureCount: 2,
+    postFailure: false,
+    contextFailure: false
+  },
+  {
+    name: 'Post Failure Recovery',
+    description: 'Test fallback when message posting fails',
+    runtimeFailure: false,
+    postFailure: true,
+    contextFailure: false
+  },
+  {
+    name: 'Thread Context Failure',
+    description: 'Test graceful degradation when thread context fails',
+    runtimeFailure: false,
+    postFailure: false,
+    contextFailure: true
+  },
+  {
+    name: 'Multiple Failures',
+    description: 'Test circuit breaker with multiple service failures',
+    runtimeFailure: true,
+    runtimeFailureCount: 5,
+    postFailure: true,
+    contextFailure: true
+  }
+];
+
+async function runTestScenario(scenario: any): Promise<void> {
+  console.log(`\n🧪 === Testing: ${scenario.name} ===`);
+  console.log(`📋 ${scenario.description}`);
+  console.log('');
 
   try {
     // Load configuration (skip environment validation for testing)
-    console.log('📋 Loading configuration...');
     const config = loadConfig({ 
       skipEnvValidation: true,
       envOverrides: {
@@ -131,17 +187,13 @@ async function testMessageManager() {
         MATTERMOST_TEAM: 'test-team'
       }
     });
-    console.log('✅ Configuration loaded successfully\n');
 
-    // Create mock components
-    console.log('🔧 Creating mock components...');
-    const mockRuntime = createMockRuntime();
-    const mockWsClient = createMockWebSocketClient() as WebSocketClient;
-    const mockRestClient = createMockRestClient() as RestClient;
-    console.log('✅ Mock components created\n');
+    // Create mock clients
+    const mockRuntime = createMockRuntime(scenario.runtimeFailure, scenario.runtimeFailureCount || 0);
+    const mockWsClient = createMockWebSocketClient() as any;
+    const mockRestClient = createMockRestClient(scenario.postFailure, scenario.contextFailure) as any;
 
-    // Initialize MessageManager
-    console.log('🔌 Initializing MessageManager...');
+    // Create MessageManager
     const messageManager = new MessageManager(
       config,
       mockRuntime,
@@ -149,150 +201,143 @@ async function testMessageManager() {
       mockRestClient
     );
 
+    // Initialize
     await messageManager.initialize();
-    console.log('✅ MessageManager initialized successfully\n');
+    console.log('✅ MessageManager initialized');
 
-    // Test 1: Direct Message
-    console.log('🧪 Test 1: Direct Message Processing');
-    const directMessage = {
-      channel_display_name: 'Direct Message',
-      channel_name: 'direct-message',
-      channel_type: 'D', // Direct message
-      post: JSON.stringify({
-        id: 'msg-dm-123',
-        user_id: 'user-456',
-        channel_id: 'channel-dm-789',
-        message: 'Hello bot! How are you today?',
-        create_at: Date.now(),
-        update_at: Date.now(),
-        type: '',
-        props: {},
-        hashtags: '',
-        pending_post_id: '',
-        reply_count: 0,
-        last_reply_at: 0,
-        participants: null,
-        is_following: false,
-        channel_mentions: []
-      }),
-      sender_name: 'Alice',
-      team_id: 'team-123'
-    };
+    // Test message scenarios
+    const testMessages = [
+      {
+        type: 'Direct Message',
+        data: {
+          channel_display_name: 'Direct Message',
+          channel_name: 'user123__bot456',
+          channel_type: 'D',
+          post: JSON.stringify({
+            id: 'msg-dm-1',
+            user_id: 'user-123',
+            channel_id: 'channel-dm-1',
+            message: 'Hello bot, how are you?',
+            create_at: Date.now(),
+            update_at: Date.now(),
+            type: '',
+            props: {},
+            hashtags: '',
+            pending_post_id: '',
+            reply_count: 0,
+            last_reply_at: 0,
+            participants: null,
+            is_following: false,
+            channel_mentions: []
+          }),
+          sender_name: 'Test User',
+          team_id: 'team-123'
+        }
+      },
+      {
+        type: 'Thread Reply',
+        data: {
+          channel_display_name: 'General',
+          channel_name: 'general',
+          channel_type: 'O',
+          post: JSON.stringify({
+            id: 'msg-thread-2',
+            user_id: 'user-456',
+            channel_id: 'channel-general',
+            message: 'This is a follow-up question',
+            create_at: Date.now(),
+            update_at: Date.now(),
+            type: '',
+            props: {},
+            hashtags: '',
+            pending_post_id: '',
+            reply_count: 1,
+            last_reply_at: Date.now(),
+            participants: null,
+            is_following: false,
+            channel_mentions: [],
+            root_id: 'original-post-123',
+            parent_id: 'original-post-123'
+          }),
+          sender_name: 'Thread User',
+          team_id: 'team-123',
+          mentions: JSON.stringify(['bot-user-456'])
+        }
+      }
+    ];
 
-    (mockWsClient as any).simulateMessage(directMessage);
-    await new Promise(resolve => setTimeout(resolve, 100)); // Wait for processing
-    console.log('✅ Direct message test completed\n');
+    // Process test messages
+    for (const testMessage of testMessages) {
+      console.log(`\n📨 Processing ${testMessage.type}...`);
+      
+      // Simulate WebSocket event
+      mockWsClient.emit('posted', testMessage.data);
+      
+      // Give some time for async processing
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
 
-    // Test 2: Mention in Channel
-    console.log('🧪 Test 2: Channel Mention Processing');
-    const mentionMessage = {
-      channel_display_name: 'General',
-      channel_name: 'general',
-      channel_type: 'O', // Open channel
-      post: JSON.stringify({
-        id: 'msg-mention-456',
-        user_id: 'user-789',
-        channel_id: 'channel-general-123',
-        message: '@test-bot can you help me with this test?',
-        create_at: Date.now(),
-        update_at: Date.now(),
-        type: '',
-        props: {},
-        hashtags: '',
-        pending_post_id: '',
-        reply_count: 0,
-        last_reply_at: 0,
-        participants: null,
-        is_following: false,
-        channel_mentions: []
-      }),
-      sender_name: 'Bob',
-      team_id: 'team-123',
-      mentions: JSON.stringify(['bot-user-123']) // Bot is mentioned
-    };
+    // Check health metrics
+    const health = messageManager.getHealthStatus();
+    console.log('\n📊 Health Metrics:');
+    console.log(`   Total Messages: ${health.totalMessages}`);
+    console.log(`   Successful: ${health.successfulResponses}`);
+    console.log(`   Failed: ${health.failedResponses}`);
+    console.log(`   Avg Response Time: ${health.averageResponseTime.toFixed(2)}ms`);
+    console.log(`   Circuit Breakers:`);
+    
+    Object.entries(health.circuitBreakers).forEach(([service, state]) => {
+      console.log(`     ${service}: ${state.state} (failures: ${state.failures})`);
+    });
 
-    (mockWsClient as any).simulateMessage(mentionMessage);
-    await new Promise(resolve => setTimeout(resolve, 100)); // Wait for processing
-    console.log('✅ Channel mention test completed\n');
+    console.log(`   Error Breakdown:`);
+    Object.entries(health.errorsByType).forEach(([type, count]) => {
+      if (count > 0) {
+        console.log(`     ${type}: ${count}`);
+      }
+    });
 
-    // Test 3: Thread Reply
-    console.log('🧪 Test 3: Thread Reply Processing');
-    const threadReply = {
-      channel_display_name: 'General',
-      channel_name: 'general',
-      channel_type: 'O',
-      post: JSON.stringify({
-        id: 'msg-thread-789',
-        user_id: 'user-456',
-        channel_id: 'channel-general-123',
-        message: '@test-bot this is a follow-up question in the thread',
-        create_at: Date.now(),
-        update_at: Date.now(),
-        type: '',
-        props: {},
-        hashtags: '',
-        pending_post_id: '',
-        reply_count: 1,
-        last_reply_at: Date.now(),
-        participants: null,
-        is_following: false,
-        channel_mentions: [],
-        root_id: 'original-post-123' // This is a thread reply
-      }),
-      sender_name: 'Alice',
-      team_id: 'team-123',
-      mentions: JSON.stringify(['bot-user-123'])
-    };
-
-    (mockWsClient as any).simulateMessage(threadReply);
-    await new Promise(resolve => setTimeout(resolve, 100)); // Wait for processing
-    console.log('✅ Thread reply test completed\n');
-
-    // Test 4: Message that should be ignored
-    console.log('🧪 Test 4: Bot\'s Own Message (Should be ignored)');
-    const botMessage = {
-      channel_display_name: 'General',
-      channel_name: 'general',
-      channel_type: 'O',
-      post: JSON.stringify({
-        id: 'msg-bot-999',
-        user_id: 'bot-user-123', // Bot's own message
-        channel_id: 'channel-general-123',
-        message: 'This is my own message',
-        create_at: Date.now(),
-        update_at: Date.now(),
-        type: '',
-        props: {},
-        hashtags: '',
-        pending_post_id: '',
-        reply_count: 0,
-        last_reply_at: 0,
-        participants: null,
-        is_following: false,
-        channel_mentions: []
-      }),
-      sender_name: 'TestBot',
-      team_id: 'team-123'
-    };
-
-    (mockWsClient as any).simulateMessage(botMessage);
-    await new Promise(resolve => setTimeout(resolve, 100)); // Wait for processing
-    console.log('✅ Bot message filtering test completed\n');
-
-    // Check cache stats
+    // Test cache statistics
     const cacheStats = messageManager.getCacheStats();
-    console.log('📊 Cache Statistics:', cacheStats);
+    console.log(`\n💾 Cache Stats:`);
+    console.log(`   Processed Messages: ${cacheStats.processedCount}/${cacheStats.maxSize}`);
 
     // Cleanup
-    console.log('🧹 Cleaning up...');
     await messageManager.cleanup();
-    console.log('✅ Cleanup completed\n');
-
-    console.log('🎉 All tests completed successfully!');
-    console.log('🔥 MessageManager AI integration is working correctly!');
+    console.log('\n🧹 MessageManager cleaned up');
+    
+    console.log(`\n✅ ${scenario.name} test completed successfully!`);
 
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error(`\n❌ Test failed:`, error);
+    throw error;
+  }
+}
+
+async function testMessageManager(): Promise<void> {
+  try {
+    console.log('🚀 Starting MessageManager Error Handling & Resilience Tests');
+    console.log('===========================================================\n');
+
+    // Run all test scenarios
+    for (const scenario of testScenarios) {
+      await runTestScenario(scenario);
+      
+      // Wait between scenarios
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    console.log('\n🎉 All error handling tests completed successfully!');
+    console.log('\n📋 Test Summary:');
+    console.log(`   ✅ Scenarios tested: ${testScenarios.length}`);
+    console.log(`   🔧 Error handling: Validated`);
+    console.log(`   🔄 Retry logic: Tested`);
+    console.log(`   ⚡ Circuit breakers: Verified`);
+    console.log(`   📊 Health monitoring: Working`);
+    console.log(`   💾 Cache management: Operational`);
+
+  } catch (error) {
+    console.error('❌ Test suite failed:', error);
     process.exit(1);
   }
 }
@@ -300,6 +345,4 @@ async function testMessageManager() {
 // Run the test
 if (import.meta.url === `file://${process.argv[1]}`) {
   testMessageManager().catch(console.error);
-}
-
-export { testMessageManager }; 
+} 

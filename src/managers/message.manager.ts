@@ -77,6 +77,54 @@ interface AIResponseResult {
   error?: string;
   model?: string;
   processingTime?: number;
+  errorType?: ErrorType;
+  retryable?: boolean;
+}
+
+/**
+ * Error types for categorization and handling
+ */
+enum ErrorType {
+  NETWORK_ERROR = 'NETWORK_ERROR',
+  API_RATE_LIMIT = 'API_RATE_LIMIT',
+  AI_MODEL_ERROR = 'AI_MODEL_ERROR',
+  AUTHENTICATION_ERROR = 'AUTHENTICATION_ERROR',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  TIMEOUT_ERROR = 'TIMEOUT_ERROR',
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+}
+
+/**
+ * Circuit breaker state for service resilience
+ */
+interface CircuitBreakerState {
+  failures: number;
+  lastFailureTime: number;
+  state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+  successCount: number;
+}
+
+/**
+ * Error handling configuration
+ */
+interface ErrorHandlingConfig {
+  maxRetries: number;
+  retryDelay: number;
+  circuitBreakerThreshold: number;
+  circuitBreakerTimeout: number;
+  enableFallbackMessages: boolean;
+}
+
+/**
+ * Health monitoring metrics
+ */
+interface HealthMetrics {
+  totalMessages: number;
+  successfulResponses: number;
+  failedResponses: number;
+  averageResponseTime: number;
+  lastHealthCheck: number;
+  errorsByType: Record<ErrorType, number>;
 }
 
 /**
@@ -101,6 +149,31 @@ export class MessageManager {
   private processedMessages = new Set<string>();
   private readonly MAX_CACHE_SIZE = 1000;
 
+  // Error handling and resilience
+  private errorConfig: ErrorHandlingConfig = {
+    maxRetries: 3,
+    retryDelay: 1000,
+    circuitBreakerThreshold: 5,
+    circuitBreakerTimeout: 60000, // 1 minute
+    enableFallbackMessages: true
+  };
+
+  private circuitBreakers = new Map<string, CircuitBreakerState>();
+  private healthMetrics: HealthMetrics = {
+    totalMessages: 0,
+    successfulResponses: 0,
+    failedResponses: 0,
+    averageResponseTime: 0,
+    lastHealthCheck: Date.now(),
+    errorsByType: Object.values(ErrorType).reduce((acc, type) => {
+      acc[type] = 0;
+      return acc;
+    }, {} as Record<ErrorType, number>)
+  };
+
+  private responseTimes: number[] = [];
+  private readonly MAX_RESPONSE_TIME_SAMPLES = 100;
+
   constructor(
     config: MattermostConfig,
     runtime: IAgentRuntime,
@@ -111,6 +184,237 @@ export class MessageManager {
     this.runtime = runtime;
     this.wsClient = wsClient;
     this.restClient = restClient;
+    
+    // Initialize circuit breakers
+    this.initializeCircuitBreakers();
+  }
+
+  /**
+   * Initialize circuit breakers for different services
+   * @private
+   */
+  private initializeCircuitBreakers(): void {
+    const services = ['ai-generation', 'thread-context', 'message-posting'];
+    services.forEach(service => {
+      this.circuitBreakers.set(service, {
+        failures: 0,
+        lastFailureTime: 0,
+        state: 'CLOSED',
+        successCount: 0
+      });
+    });
+  }
+
+  /**
+   * Check if a circuit breaker allows operation
+   * @private
+   */
+  private isCircuitBreakerOpen(service: string): boolean {
+    const breaker = this.circuitBreakers.get(service);
+    if (!breaker) return false;
+
+    if (breaker.state === 'OPEN') {
+      const timeSinceFailure = Date.now() - breaker.lastFailureTime;
+      if (timeSinceFailure > this.errorConfig.circuitBreakerTimeout) {
+        breaker.state = 'HALF_OPEN';
+        breaker.successCount = 0;
+        this.logger.info(`Circuit breaker for ${service} moved to HALF_OPEN`);
+      }
+      return breaker.state === 'OPEN';
+    }
+
+    return false;
+  }
+
+  /**
+   * Record circuit breaker success
+   * @private
+   */
+  private recordCircuitBreakerSuccess(service: string): void {
+    const breaker = this.circuitBreakers.get(service);
+    if (!breaker) return;
+
+    if (breaker.state === 'HALF_OPEN') {
+      breaker.successCount++;
+      if (breaker.successCount >= 3) {
+        breaker.state = 'CLOSED';
+        breaker.failures = 0;
+        this.logger.info(`Circuit breaker for ${service} CLOSED - service recovered`);
+      }
+    } else if (breaker.state === 'CLOSED') {
+      breaker.failures = Math.max(0, breaker.failures - 1);
+    }
+  }
+
+  /**
+   * Record circuit breaker failure
+   * @private
+   */
+  private recordCircuitBreakerFailure(service: string): void {
+    const breaker = this.circuitBreakers.get(service);
+    if (!breaker) return;
+
+    breaker.failures++;
+    breaker.lastFailureTime = Date.now();
+
+    if (breaker.failures >= this.errorConfig.circuitBreakerThreshold) {
+      breaker.state = 'OPEN';
+      this.logger.warn(`Circuit breaker for ${service} OPENED - too many failures`, {
+        failures: breaker.failures,
+        threshold: this.errorConfig.circuitBreakerThreshold
+      });
+    }
+  }
+
+  /**
+   * Categorize error for proper handling
+   * @private
+   */
+  private categorizeError(error: any): ErrorType {
+    const errorMessage = error?.message?.toLowerCase() || '';
+    const errorCode = error?.code;
+
+    if (errorMessage.includes('network') || errorMessage.includes('econnrefused') || errorCode === 'ENOTFOUND') {
+      return ErrorType.NETWORK_ERROR;
+    }
+    if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests') || errorCode === 429) {
+      return ErrorType.API_RATE_LIMIT;
+    }
+    if (errorMessage.includes('unauthorized') || errorMessage.includes('forbidden') || [401, 403].includes(errorCode)) {
+      return ErrorType.AUTHENTICATION_ERROR;
+    }
+    if (errorMessage.includes('timeout') || errorCode === 'ETIMEDOUT') {
+      return ErrorType.TIMEOUT_ERROR;
+    }
+    if (errorMessage.includes('validation') || errorMessage.includes('invalid') || errorCode === 400) {
+      return ErrorType.VALIDATION_ERROR;
+    }
+    if (errorMessage.includes('model') || errorMessage.includes('ai') || errorMessage.includes('generation')) {
+      return ErrorType.AI_MODEL_ERROR;
+    }
+
+    return ErrorType.UNKNOWN_ERROR;
+  }
+
+  /**
+   * Get user-friendly error message based on error type
+   * @private
+   */
+  private getUserFriendlyErrorMessage(errorType: ErrorType, isDirectMessage: boolean): string {
+    const prefix = isDirectMessage ? "Sorry," : "Apologies,";
+    
+    switch (errorType) {
+      case ErrorType.NETWORK_ERROR:
+        return `${prefix} I'm having trouble connecting to my AI services right now. Please try again in a moment! 🔌`;
+      
+      case ErrorType.API_RATE_LIMIT:
+        return `${prefix} I'm getting a lot of requests right now. Please wait a moment and try again! ⏱️`;
+      
+      case ErrorType.AI_MODEL_ERROR:
+        return `${prefix} my AI brain is having a temporary hiccup. Give me a moment to recover! 🤖`;
+      
+      case ErrorType.AUTHENTICATION_ERROR:
+        return `${prefix} I'm having authentication issues. My admin needs to check my credentials! 🔐`;
+      
+      case ErrorType.TIMEOUT_ERROR:
+        return `${prefix} that took too long to process. Please try asking in a simpler way! ⏰`;
+      
+      case ErrorType.VALIDATION_ERROR:
+        return `${prefix} I didn't understand your message format. Could you rephrase that? 🤔`;
+      
+      default:
+        return `${prefix} I encountered an unexpected issue. Please try again or contact support if this persists! 🔧`;
+    }
+  }
+
+  /**
+   * Execute operation with retry logic
+   * @private
+   */
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    service: string,
+    operationName: string
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 1; attempt <= this.errorConfig.maxRetries; attempt++) {
+      try {
+        if (this.isCircuitBreakerOpen(service)) {
+          throw new Error(`Circuit breaker open for ${service}`);
+        }
+
+        const result = await operation();
+        this.recordCircuitBreakerSuccess(service);
+        return result;
+
+      } catch (error) {
+        lastError = error;
+        const errorType = this.categorizeError(error);
+        
+        this.logger.warn(`${operationName} attempt ${attempt} failed`, {
+          service,
+          attempt,
+          errorType,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+
+        // Don't retry for certain error types
+        if ([ErrorType.AUTHENTICATION_ERROR, ErrorType.VALIDATION_ERROR].includes(errorType)) {
+          break;
+        }
+
+        // Don't retry on last attempt
+        if (attempt === this.errorConfig.maxRetries) {
+          break;
+        }
+
+        // Exponential backoff with jitter
+        const delay = this.errorConfig.retryDelay * Math.pow(2, attempt - 1);
+        const jitter = Math.random() * 0.1 * delay;
+        await new Promise(resolve => setTimeout(resolve, delay + jitter));
+      }
+    }
+
+    this.recordCircuitBreakerFailure(service);
+    throw lastError;
+  }
+
+  /**
+   * Update health metrics
+   * @private
+   */
+  private updateHealthMetrics(success: boolean, responseTime: number, errorType?: ErrorType): void {
+    this.healthMetrics.totalMessages++;
+    
+    if (success) {
+      this.healthMetrics.successfulResponses++;
+    } else {
+      this.healthMetrics.failedResponses++;
+      if (errorType) {
+        this.healthMetrics.errorsByType[errorType]++;
+      }
+    }
+
+    // Update response time tracking
+    this.responseTimes.push(responseTime);
+    if (this.responseTimes.length > this.MAX_RESPONSE_TIME_SAMPLES) {
+      this.responseTimes.shift();
+    }
+
+    // Recalculate average response time
+    this.healthMetrics.averageResponseTime = 
+      this.responseTimes.reduce((sum, time) => sum + time, 0) / this.responseTimes.length;
+  }
+
+  /**
+   * Get current health status
+   */
+  getHealthStatus(): HealthMetrics & { circuitBreakers: Record<string, CircuitBreakerState> } {
+    return {
+      ...this.healthMetrics,
+      circuitBreakers: Object.fromEntries(this.circuitBreakers.entries())
+    };
   }
 
   /**
@@ -163,6 +467,10 @@ export class MessageManager {
 
       // Clear caches
       this.processedMessages.clear();
+      this.responseTimes.length = 0;
+
+      // Reset circuit breakers
+      this.initializeCircuitBreakers();
 
       // Clear state
       this.botUserId = null;
@@ -300,11 +608,11 @@ export class MessageManager {
   }
 
   /**
-   * Retrieve thread context for conversation history
+   * Retrieve thread context for conversation history with error handling
    * @private
    */
   private async getThreadContext(threadId: string, channelId: string): Promise<ThreadContext | null> {
-    try {
+    return this.executeWithRetry(async () => {
       this.logger.debug('Retrieving thread context', { threadId, channelId });
 
       // Get posts around the thread root
@@ -345,15 +653,11 @@ export class MessageManager {
 
       return context;
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.warn('Failed to retrieve thread context', { threadId, channelId, error: errorMessage });
-      return null;
-    }
+    }, 'thread-context', 'Thread context retrieval');
   }
 
   /**
-   * Generate AI response using ElizaOS runtime
+   * Generate AI response using ElizaOS runtime with comprehensive error handling
    * @private
    */
   private async generateAIResponse(
@@ -377,56 +681,70 @@ export class MessageManager {
         isMention: metadata.isMention
       });
 
-      // Build context string for the AI
-      let contextString = '';
-      if (context && context.messages.length > 0) {
-        contextString = context.messages
-          .map(msg => `${msg.username || 'User'}: ${msg.message}`)
-          .join('\n');
-        contextString = `Previous conversation:\n${contextString}\n\nCurrent message: ${message}`;
-      } else {
-        contextString = message;
-      }
+      const result = await this.executeWithRetry(async () => {
+        // Build context string for the AI
+        let contextString = '';
+        if (context && context.messages.length > 0) {
+          contextString = context.messages
+            .map(msg => `${msg.username || 'User'}: ${msg.message}`)
+            .join('\n');
+          contextString = `Previous conversation:\n${contextString}\n\nCurrent message: ${message}`;
+        } else {
+          contextString = message;
+        }
 
-      // Generate response using ElizaOS runtime
-      const aiResponse = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: contextString,
-        temperature: 0.7,
-        maxTokens: 256,
-        user: metadata.userId
-      });
-      
-      // If the response is an object, extract the message
-      let responseText: string;
-      if (aiResponse && typeof aiResponse === 'object' && 'message' in aiResponse) {
-        responseText = (aiResponse as any).message;
-      } else if (typeof aiResponse === 'string' && aiResponse) {
-        responseText = aiResponse;
-      } else {
-        responseText = 'I received your message, but I\'m having trouble generating a response right now. Please try again!';
-      }
+        // Generate response using ElizaOS runtime
+        const aiResponse = await this.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: contextString,
+          temperature: 0.7,
+          maxTokens: 256,
+          user: metadata.userId
+        });
+
+        // If the response is an object, extract the message
+        let responseText: string;
+        if (aiResponse !== null && aiResponse !== undefined) {
+          if (typeof aiResponse === 'object' && aiResponse !== null && 'message' in aiResponse) {
+            responseText = (aiResponse as any).message;
+          } else if (typeof aiResponse === 'string' && aiResponse.trim()) {
+            responseText = aiResponse;
+          } else {
+            responseText = 'I received your message, but I\'m having trouble generating a response right now. Please try again!';
+          }
+        } else {
+          responseText = 'I received your message, but I\'m having trouble generating a response right now. Please try again!';
+        }
+
+        return responseText;
+
+      }, 'ai-generation', 'AI response generation');
 
       const processingTime = Date.now() - startTime;
+      this.updateHealthMetrics(true, processingTime);
 
       this.logger.info('AI response generated successfully', {
-        responseLength: responseText.length,
+        responseLength: result.length,
         processingTime,
         model: 'TEXT_LARGE'
       });
 
       return {
         success: true,
-        response: responseText,
+        response: result,
         model: 'TEXT_LARGE',
         processingTime
       };
 
     } catch (error) {
       const processingTime = Date.now() - startTime;
+      const errorType = this.categorizeError(error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      this.updateHealthMetrics(false, processingTime, errorType);
       
       this.logger.error('Failed to generate AI response', error, {
         errorMessage,
+        errorType,
         processingTime,
         messageLength: message.length
       });
@@ -434,13 +752,15 @@ export class MessageManager {
       return {
         success: false,
         error: errorMessage,
-        processingTime
+        errorType,
+        processingTime,
+        retryable: ![ErrorType.AUTHENTICATION_ERROR, ErrorType.VALIDATION_ERROR].includes(errorType)
       };
     }
   }
 
   /**
-   * Post response back to Mattermost
+   * Post response back to Mattermost with error handling
    * @private
    */
   private async postResponse(
@@ -448,7 +768,7 @@ export class MessageManager {
     response: string,
     rootId?: string
   ): Promise<void> {
-    try {
+    await this.executeWithRetry(async () => {
       this.logger.info('Posting response to Mattermost', {
         channelId,
         responseLength: response.length,
@@ -464,15 +784,7 @@ export class MessageManager {
         rootId
       });
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error('Failed to post response', error, {
-        errorMessage,
-        channelId,
-        rootId
-      });
-      throw error;
-    }
+    }, 'message-posting', 'Message posting');
   }
 
   /**
@@ -574,11 +886,12 @@ export class MessageManager {
   }
 
   /**
-   * Route a processed message to the appropriate handler and generate AI response
+   * Route a processed message with comprehensive error handling and resilience
    * @private
    */
   private async routeMessage(processedMessage: ProcessedMessage): Promise<void> {
     const { post, eventData, isDirectMessage, isMention } = processedMessage;
+    const startTime = Date.now();
 
     try {
       this.logger.info('Processing message for AI response', {
@@ -598,8 +911,17 @@ export class MessageManager {
       let threadContext: ThreadContext | null = null;
       
       if (post.root_id) {
-        // This is a thread reply, get context
-        threadContext = await this.getThreadContext(threadId, post.channel_id);
+        try {
+          // This is a thread reply, get context
+          threadContext = await this.getThreadContext(threadId, post.channel_id);
+        } catch (error) {
+          // Log error but continue without context
+          this.logger.warn('Failed to retrieve thread context, continuing without it', {
+            threadId,
+            channelId: post.channel_id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
       }
 
       // Generate AI response
@@ -615,60 +937,87 @@ export class MessageManager {
       );
 
       if (aiResult.success && aiResult.response) {
-        // Post the AI response back to Mattermost
-        await this.postResponse(
-          post.channel_id,
-          aiResult.response,
-          threadId // Reply in thread
-        );
+        try {
+          // Post the AI response back to Mattermost
+          await this.postResponse(
+            post.channel_id,
+            aiResult.response,
+            threadId // Reply in thread
+          );
 
-        this.logger.info('Message processed successfully', {
-          postId: post.id,
-          responseLength: aiResult.response.length,
-          processingTime: aiResult.processingTime,
-          cacheSize: this.processedMessages.size
-        });
+          this.logger.info('Message processed successfully', {
+            postId: post.id,
+            responseLength: aiResult.response.length,
+            processingTime: aiResult.processingTime,
+            totalTime: Date.now() - startTime,
+            cacheSize: this.processedMessages.size
+          });
+
+        } catch (postError) {
+          // If posting fails, try to send a simple error message
+          const errorType = this.categorizeError(postError);
+          const userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
+          
+          try {
+            await this.postResponse(post.channel_id, userMessage, threadId);
+          } catch (fallbackError) {
+            this.logger.error('Failed to send fallback error message', fallbackError);
+          }
+          
+          throw postError;
+        }
 
       } else {
-        // AI generation failed, send fallback message
-        const fallbackMessage = "I'm having trouble processing your message right now. Please try again in a moment! 🤖";
-        
-        await this.postResponse(
-          post.channel_id,
-          fallbackMessage,
-          threadId
-        );
+        // AI generation failed, send appropriate user message
+        const errorType = aiResult.errorType || ErrorType.UNKNOWN_ERROR;
+        let userMessage: string;
+
+        if (this.errorConfig.enableFallbackMessages) {
+          userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
+        } else {
+          userMessage = "I'm temporarily unavailable. Please try again later! 🤖";
+        }
+
+        try {
+          await this.postResponse(post.channel_id, userMessage, threadId);
+        } catch (fallbackError) {
+          this.logger.error('Failed to send error message to user', fallbackError);
+        }
 
         this.logger.warn('Used fallback response due to AI failure', {
           postId: post.id,
-          error: aiResult.error
+          errorType,
+          error: aiResult.error,
+          retryable: aiResult.retryable
         });
       }
 
     } catch (error) {
+      const errorType = this.categorizeError(error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
       this.logger.error('Error processing message', error, { 
         errorMessage,
+        errorType,
         postId: post.id,
-        channelId: post.channel_id
+        channelId: post.channel_id,
+        totalTime: Date.now() - startTime
       });
 
-      // Try to send an error message to the user
-      try {
-        const errorResponse = "Sorry, I encountered an error while processing your message. Please try again later! 🔧";
-        await this.postResponse(
-          post.channel_id,
-          errorResponse,
-          post.root_id || post.id
-        );
-      } catch (sendError) {
-        this.logger.error('Failed to send error response', sendError);
+      // Try to send an error message to the user as last resort
+      if (this.errorConfig.enableFallbackMessages) {
+        try {
+          const userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
+          await this.postResponse(post.channel_id, userMessage, post.root_id || post.id);
+        } catch (sendError) {
+          this.logger.error('Failed to send final error response', sendError);
+        }
       }
     }
   }
 
   /**
-   * Handle 'posted' WebSocket events (new messages)
+   * Handle 'posted' WebSocket events with comprehensive error handling
    * @private
    */
   private async handlePostedEvent(data: WebSocketPostedEvent): Promise<void> {
@@ -680,7 +1029,15 @@ export class MessageManager {
       });
 
       // Parse the post data
-      const post: MattermostPost = JSON.parse(data.post);
+      let post: MattermostPost;
+      try {
+        post = JSON.parse(data.post);
+      } catch (parseError) {
+        this.logger.error('Failed to parse post data', parseError, { 
+          postData: data.post?.substring(0, 200) 
+        });
+        return;
+      }
       
       // Apply filtering logic
       const processedMessage = this.shouldProcessMessage(post, data);
@@ -696,7 +1053,8 @@ export class MessageManager {
 
       // Route message if it should be processed
       if (processedMessage.shouldProcess) {
-        await this.routeMessage(processedMessage);
+        // Process message asynchronously to avoid blocking other events
+        setImmediate(() => this.routeMessage(processedMessage));
       }
 
     } catch (error) {
