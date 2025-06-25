@@ -2,6 +2,10 @@
 docs
 .bealers/
 
+# Character files (not part of plugin)
+*.character.json
+hiro.character.json
+
 # Build and runtime
 dist/
 .eliza/
