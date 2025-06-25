@@ -40,7 +40,7 @@ describe('RestClient Integration Tests', () => {
 
   beforeAll(async () => {
     try {
-      console.log('✅ Configuration loaded successfully');
+      console.log('Configuration loaded successfully');
       mattermostConfig = loadConfig();
       testChannelName = mattermostConfig.env.MATTERMOST_TEST_CHANNEL;
       
@@ -52,25 +52,25 @@ describe('RestClient Integration Tests', () => {
       // Get bot user and team info
       const me = await client.getBotUser();
       testUserId = me.id;
-      console.log(`✅ Authenticated as: ${me.username} (${me.id})`);
+      console.log(`Authenticated as: ${me.username} (${me.id})`);
       
       const team = await client.getTeam();
       testTeamId = team.id;
-      console.log(`✅ Found team: ${team.display_name} (${team.id})`);
+      console.log(`Found team: ${team.display_name} (${team.id})`);
       
       // Try to find test channel
       try {
         const testChannel = await client.getChannelByName(testChannelName);
         testChannelId = testChannel.id;
-        console.log(`✅ Found test channel: ${testChannel.display_name || testChannelName} (${testChannel.id})`);
+        console.log(`Found test channel: ${testChannel.display_name || testChannelName} (${testChannel.id})`);
       } catch (error) {
-        console.log(`⚠️ Test channel "${testChannelName}" not found - message operations will be skipped`);
-        console.log(`💡 To enable full testing, create a public channel named "${testChannelName}" or set MATTERMOST_TEST_CHANNEL in .env`);
+        console.log(`Test channel "${testChannelName}" not found - message operations will be skipped`);
+        console.log(`To enable full testing, create a public channel named "${testChannelName}" or set MATTERMOST_TEST_CHANNEL in .env`);
       }
       
     } catch (error) {
-      console.log('⚠️ Integration tests will be skipped - configuration or connection failed:', error.message);
-      console.log('💡 To run integration tests:');
+      console.log('Integration tests will be skipped - configuration or connection failed:', error.message);
+      console.log('To run integration tests:');
       console.log('   1. Create .env file with MATTERMOST_URL, MATTERMOST_TOKEN, MATTERMOST_TEAM');
       console.log('   2. Optionally set MATTERMOST_TEST_CHANNEL (defaults to "eliza-testing")');
       console.log('   3. Ensure the bot has access to the test channel');
@@ -80,7 +80,7 @@ describe('RestClient Integration Tests', () => {
   afterAll(async () => {
     // No disconnect method needed - RestClient doesn't have one
     if (client) {
-      console.log('✅ Client tests completed');
+      console.log('Client tests completed');
     }
   });
 
@@ -95,7 +95,7 @@ describe('RestClient Integration Tests', () => {
 
     it('should initialize client successfully', () => {
       expect(client).toBeDefined();
-      expect(client.isReady()).toBe(true);
+      expect(client.isReady).toBe(true);
     });
   });
 
@@ -132,7 +132,7 @@ describe('RestClient Integration Tests', () => {
   describe('Channel Operations', () => {
     it('should get channel by name', async () => {
       if (!client || !testChannelId) {
-        console.log(`⚠️ Skipping channel test - test channel "${testChannelName}" not available`);
+        console.log(`Skipping channel test - test channel "${testChannelName}" not available`);
         return;
       }
       
@@ -145,7 +145,7 @@ describe('RestClient Integration Tests', () => {
 
     it('should get channel by ID', async () => {
       if (!client || !testChannelId) {
-        console.log(`⚠️ Skipping channel test - test channel "${testChannelName}" not available`);
+        console.log(`Skipping channel test - test channel "${testChannelName}" not available`);
         return;
       }
       
@@ -161,11 +161,11 @@ describe('RestClient Integration Tests', () => {
 
     it('should post a message to channel', async () => {
       if (!client || !testChannelId) {
-        console.log(`⚠️ Skipping message test - test channel "${testChannelName}" not available`);
+        console.log(`Skipping message test - test channel "${testChannelName}" not available`);
         return;
       }
       
-      const message = `🧪 Integration Test Message - ${new Date().toISOString()}`;
+      const message = `Integration Test Message - ${new Date().toISOString()}`;
       const post = await client.createPost(testChannelId, message);
       
       expect(post).toBeDefined();
@@ -179,7 +179,7 @@ describe('RestClient Integration Tests', () => {
 
     it('should retrieve the posted message', async () => {
       if (!client || !testPostId) {
-        console.log(`⚠️ Skipping message test - no test post available`);
+        console.log(`Skipping message test - no test post available`);
         return;
       }
       
@@ -191,11 +191,11 @@ describe('RestClient Integration Tests', () => {
 
     it('should update the posted message', async () => {
       if (!client || !testPostId) {
-        console.log(`⚠️ Skipping message test - no test post available`);
+        console.log(`Skipping message test - no test post available`);
         return;
       }
       
-      const updatedMessage = `🧪 UPDATED Integration Test Message - ${new Date().toISOString()}`;
+      const updatedMessage = `UPDATED Integration Test Message - ${new Date().toISOString()}`;
       const updatedPost = await client.updatePost(testPostId, updatedMessage);
       
       expect(updatedPost).toBeDefined();
@@ -205,7 +205,7 @@ describe('RestClient Integration Tests', () => {
 
     it('should get channel posts', async () => {
       if (!client || !testChannelId) {
-        console.log(`⚠️ Skipping message test - test channel "${testChannelName}" not available`);
+        console.log(`Skipping message test - test channel "${testChannelName}" not available`);
         return;
       }
       
@@ -247,12 +247,12 @@ describe('RestClient Integration Tests', () => {
   describe('Performance and Load Testing', () => {
     it('should handle multiple concurrent requests', async () => {
       if (!client || !testChannelId) {
-        console.log(`⚠️ Skipping performance test - test channel "${testChannelName}" not available`);
+        console.log(`Skipping performance test - test channel "${testChannelName}" not available`);
         return;
       }
       
       const promises = Array.from({ length: 5 }, (_, i) => 
-        client.createPost(testChannelId, `🚀 Concurrent Test Message ${i + 1} - ${new Date().toISOString()}`)
+        client.createPost(testChannelId, `Concurrent Test Message ${i + 1} - ${new Date().toISOString()}`)
       );
       
       const results = await Promise.all(promises);
@@ -275,7 +275,7 @@ describe('RestClient Integration Tests', () => {
       }
       
       // Client should still be ready
-      expect(client.isReady()).toBe(true);
+      expect(client.isReady).toBe(true);
       expect(me.id).toBeTruthy();
       expect(team.id).toBeTruthy();
     });
@@ -314,9 +314,9 @@ describe('WebSocket Client and ElizaOS Runtime Integration Tests', () => {
         plugins: []
       } as IAgentRuntime;
       
-      console.log('✅ Mock runtime created for WebSocket integration tests');
+      console.log('Mock runtime created for WebSocket integration tests');
     } catch (error) {
-      console.log('⚠️ WebSocket integration tests will be skipped - configuration failed:', error.message);
+      console.log('WebSocket integration tests will be skipped - configuration failed:', error.message);
     }
   });
 

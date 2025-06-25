@@ -2,7 +2,7 @@
 
 /**
  * Test script for MessageManager AI integration
- * Tests the complete message processing pipeline including error handling and resilience
+ * Tests the complete message processing pipeline including error handling
  */
 
 import { loadConfig } from '../../src/config';
@@ -52,7 +52,7 @@ const createMockWebSocketClient = () => {
         eventHandlers.set(event, []);
       }
       eventHandlers.get(event)?.push(handler);
-      console.log(`📡 Registered handler for event: ${event}`);
+      console.log(`Registered handler for event: ${event}`);
     },
     off: (event: string, handler: Function) => {
       const handlers = eventHandlers.get(event);
@@ -62,7 +62,7 @@ const createMockWebSocketClient = () => {
           handlers.splice(index, 1);
         }
       }
-      console.log(`📡 Unregistered handler for event: ${event}`);
+      console.log(`Unregistered handler for event: ${event}`);
     },
     emit: (event: string, data: any) => {
       const handlers = eventHandlers.get(event);
@@ -82,7 +82,7 @@ const createMockRestClient = (shouldFailOnPost = false, shouldFailOnContext = fa
   
   return {
     isReady: () => true,
-    initialize: async () => console.log('📊 REST client initialized'),
+    initialize: async () => console.log('REST client initialized'),
     getBotUser: async () => ({
       id: 'bot-user-456',
       username: 'test-bot',
@@ -173,8 +173,8 @@ const testScenarios = [
 ];
 
 async function runTestScenario(scenario: any): Promise<void> {
-  console.log(`\n🧪 === Testing: ${scenario.name} ===`);
-  console.log(`📋 ${scenario.description}`);
+  console.log(`\n=== Testing: ${scenario.name} ===`);
+  console.log(`${scenario.description}`);
   console.log('');
 
   try {
@@ -203,7 +203,7 @@ async function runTestScenario(scenario: any): Promise<void> {
 
     // Initialize
     await messageManager.initialize();
-    console.log('✅ MessageManager initialized');
+    console.log('MessageManager initialized');
 
     // Test message scenarios
     const testMessages = [
@@ -279,7 +279,7 @@ async function runTestScenario(scenario: any): Promise<void> {
 
     // Check health metrics
     const health = messageManager.getHealthStatus();
-    console.log('\n📊 Health Metrics:');
+    console.log('\nHealth Metrics:');
     console.log(`   Total Messages: ${health.totalMessages}`);
     console.log(`   Successful: ${health.successfulResponses}`);
     console.log(`   Failed: ${health.failedResponses}`);
@@ -299,24 +299,24 @@ async function runTestScenario(scenario: any): Promise<void> {
 
     // Test cache statistics
     const cacheStats = messageManager.getCacheStats();
-    console.log(`\n💾 Cache Stats:`);
+    console.log(`\nCache Stats:`);
     console.log(`   Processed Messages: ${cacheStats.processedCount}/${cacheStats.maxSize}`);
 
     // Cleanup
     await messageManager.cleanup();
-    console.log('\n🧹 MessageManager cleaned up');
+    console.log('\nMessageManager cleaned up');
     
-    console.log(`\n✅ ${scenario.name} test completed successfully!`);
+    console.log(`\n${scenario.name} test completed successfully!`);
 
   } catch (error) {
-    console.error(`\n❌ Test failed:`, error);
+    console.error(`\nTest failed:`, error);
     throw error;
   }
 }
 
 async function testMessageManager(): Promise<void> {
   try {
-    console.log('🚀 Starting MessageManager Error Handling & Resilience Tests');
+    console.log('Starting MessageManager Error Handling & Resilience Tests');
     console.log('===========================================================\n');
 
     // Run all test scenarios
@@ -327,17 +327,17 @@ async function testMessageManager(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    console.log('\n🎉 All error handling tests completed successfully!');
-    console.log('\n📋 Test Summary:');
-    console.log(`   ✅ Scenarios tested: ${testScenarios.length}`);
-    console.log(`   🔧 Error handling: Validated`);
-    console.log(`   🔄 Retry logic: Tested`);
-    console.log(`   ⚡ Circuit breakers: Verified`);
-    console.log(`   📊 Health monitoring: Working`);
-    console.log(`   💾 Cache management: Operational`);
+    console.log('\nAll error handling tests completed successfully!');
+    console.log('\nTest Summary:');
+    console.log(`   Scenarios tested: ${testScenarios.length}`);
+    console.log(`   Error handling: Validated`);
+    console.log(`   Retry logic: Tested`);
+    console.log(`   Circuit breakers: Verified`);
+    console.log(`   Health monitoring: Working`);
+    console.log(`   Cache management: Operational`);
 
   } catch (error) {
-    console.error('❌ Test suite failed:', error);
+    console.error('Test suite failed:', error);
     process.exit(1);
   }
 }

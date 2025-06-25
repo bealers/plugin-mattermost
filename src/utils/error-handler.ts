@@ -45,7 +45,7 @@ export interface ServiceHealth {
  */
 export class ErrorHandler {
   private runtime: IAgentRuntime;
-  private logger = createSafeLogger(elizaLogger);
+  private logger: any;
   private errors: ErrorDetails[] = [];
   private maxErrorsStored: number = 100;
   private errorCounts: Record<ErrorSeverity, number> = {
@@ -58,6 +58,9 @@ export class ErrorHandler {
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
     this.serviceStartTime = Date.now();
+    
+    // Use runtime logger if available, otherwise fall back to createSafeLogger
+    this.logger = runtime.logger || createSafeLogger(elizaLogger);
   }
 
   /**
@@ -91,16 +94,19 @@ export class ErrorHandler {
         });
         break;
       case ErrorSeverity.HIGH:
-        this.logger.error(`[${options.source}] ${error.message}`, error, {
+        this.logger.error(`[${options.source}] ${error.message}`, {
           code: errorDetails.code,
           context: options.context,
           stack: error.stack,
         });
-        // NOTE: Runtime emit not available in current ElizaOS version
+        // Emit critical error event to runtime
+        if (this.runtime && typeof this.runtime.emit === 'function') {
+          this.runtime.emit('MATTERMOST_CRITICAL_ERROR', errorDetails);
+        }
         break;
       case ErrorSeverity.MEDIUM:
       default:
-        this.logger.error(`[${options.source}] ${error.message}`, error, {
+        this.logger.error(`[${options.source}] ${error.message}`, {
           code: errorDetails.code,
           context: options.context,
         });
@@ -155,7 +161,10 @@ export class ErrorHandler {
    * Report service health to ElizaOS runtime
    */
   reportHealth(serviceHealth: ServiceHealth): void {
-    // NOTE: Runtime emit not available in current ElizaOS version
+    // Emit health check event to runtime
+    if (this.runtime && typeof this.runtime.emit === 'function') {
+      this.runtime.emit('MATTERMOST_HEALTH_CHECK', serviceHealth);
+    }
     
     // Log health status
     const { status, details } = serviceHealth;
@@ -173,7 +182,7 @@ export class ErrorHandler {
     } else if (status === 'degraded') {
       this.logger.warn(message, context);
     } else {
-      this.logger.error(message, new Error(`Unhealthy service status: ${status}`), context);
+      this.logger.error(message, context);
     }
   }
 

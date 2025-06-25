@@ -209,6 +209,16 @@ export class RestClient extends BaseClient {
     return this.posts.getPostsForChannel(channelId, options);
   }
 
+  /**
+   * Update a post - delegates to PostsClient
+   */
+  async updatePost(postId: string, message: string, options?: { fileIds?: string[]; props?: any }): Promise<any> {
+    if (!this.isInitialized) {
+      throw new Error('RestClient not initialized. Call initialize() first.');
+    }
+    return this.posts.updatePost(postId, message, options);
+  }
+
   // ============================================================
   // REMAINING METHODS (User, Channel, File operations)
   // ============================================================
@@ -325,7 +335,7 @@ export class RestClient extends BaseClient {
   /**
    * Test the connection to the Mattermost server
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
     return this.executeWithRetry(async () => {
       try {
         this.logger.debug('Testing connection to Mattermost server');
@@ -334,12 +344,13 @@ export class RestClient extends BaseClient {
         await this.client.getMe();
         
         this.logger.debug('Connection test successful');
-        return true;
+        return { success: true };
       } catch (error) {
         this.logger.warn('Connection test failed', {
           error: error instanceof Error ? error.message : String(error)
         });
-        throw this.createApiError(error, 'Connection test failed');
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return { success: false, error: errorMessage };
       }
     }, 'testConnection');
   }

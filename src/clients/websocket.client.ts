@@ -43,7 +43,7 @@ export class WebSocketClient {
   private maxReconnectAttempts: number;
   private baseReconnectDelay: number;
   private reconnectTimeout: NodeJS.Timeout | null = null;
-  private eventListeners: Map<string, Set<(data: any) => void>> = new Map();
+  private eventListeners: Map<string, Set<(data: any, eventInfo?: any) => void>> = new Map();
   private isAuthenticated: boolean = false;
   private connectionPromise: Promise<void> | null = null;
   private logger = createSafeLogger(elizaLogger);
@@ -168,7 +168,7 @@ export class WebSocketClient {
    * @param event - Event name or '*' for all events
    * @param callback - Function to call when event is emitted
    */
-  on(event: string, callback: (data: any) => void): void {
+  on(event: string, callback: (data: any, eventInfo?: any) => void): void {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set());
     }
@@ -185,7 +185,7 @@ export class WebSocketClient {
    * @param event - Event name to remove listener from
    * @param callback - Specific callback to remove
    */
-  off(event: string, callback: (data: any) => void): void {
+  off(event: string, callback: (data: any, eventInfo?: any) => void): void {
     if (this.eventListeners.has(event)) {
       const listeners = this.eventListeners.get(event)!;
       listeners.delete(callback);
@@ -207,10 +207,10 @@ export class WebSocketClient {
    * @param event - Event name to listen for
    * @param callback - Function to call when event is emitted
    */
-  once(event: string, callback: (data: any) => void): void {
-    const onceCallback = (data: any) => {
+  once(event: string, callback: (data: any, eventInfo?: any) => void): void {
+    const onceCallback = (data: any, eventInfo?: any) => {
       this.off(event, onceCallback);
-      callback(data);
+      callback(data, eventInfo);
     };
     this.on(event, onceCallback);
   }
@@ -295,7 +295,8 @@ export class WebSocketClient {
       
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error(`Error handling WebSocket message`, err, {
+      this.logger.error(`Error handling WebSocket message`, {
+        error: err.message,
         data: data.toString().substring(0, 200) // Log first 200 chars for debugging
       });
     }
@@ -305,7 +306,8 @@ export class WebSocketClient {
    * Handle WebSocket errors
    */
   private handleError(error: Error): void {
-    this.logger.error(`WebSocket error`, error, {
+    this.logger.error(`WebSocket error`, {
+      error: error.message,
       reconnectAttempts: this.reconnectAttempts
     });
   }
@@ -371,9 +373,19 @@ export class WebSocketClient {
       let successCount = 0;
       let errorCount = 0;
 
+      // Create metadata structure for ElizaOS compatibility
+      const eventMetadata = {
+        event: eventInfo.event,
+        metadata: {
+          timestamp: eventInfo.timestamp,
+          source: 'websocket_client',
+          ...eventInfo.metadata
+        }
+      };
+
       for (const listener of listeners) {
         try {
-          listener(eventInfo.data);
+          listener(eventInfo.data, eventMetadata);
           successCount++;
         } catch (error) {
           errorCount++;
