@@ -1,24 +1,16 @@
 ## Description
 Brief description of what this PR does.
 
-## Type of Change
-- [ ] 🐛 Bug fix
-- [ ] ✨ New feature  
-- [ ] 📚 Documentation update
-- [ ] 🔧 Refactoring
-- [ ] ⚡ Performance improvement
-
-## TaskMaster Reference
-- **Task/Subtask ID:** (e.g., Task 2.3)
-- **Branch:** `feature/task-X-description`
-- **Tag:** `task-X-name`
+## Changes
+- [ ] Feature addition
+- [ ] Bug fix  
+- [ ] Documentation update
+- [ ] Test improvement
+- [ ] Refactoring
 
 ## Testing
-- [ ] Tests added/updated
-- [ ] Manual testing completed
-- [ ] No breaking changes
+- [ ] Tests pass locally
+- [ ] Added/updated tests if needed
 
-## Checklist
-- [ ] Code follows project conventions
-- [ ] Self-review completed
-- [ ] Documentation updated if needed 
+## Related Issues
+Closes #(issue number if applicable) 
