@@ -401,6 +401,73 @@ export class RestClient extends BaseClient {
   }
 
   /**
+   * Remove a user from a channel (leave channel)
+   */
+  async removeFromChannel(userId: string, channelId: string): Promise<any> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Removing user from channel', { userId, channelId });
+        
+        const result = await this.client.removeFromChannel(userId, channelId);
+        
+        this.logger.info('Successfully removed user from channel', { 
+          channelId,
+          userId
+        });
+        
+        return result;
+      } catch (error) {
+        throw this.createApiError(error, `Failed to remove user from channel: ${channelId}`);
+      }
+    }, `removeFromChannel(${userId}, ${channelId})`);
+  }
+
+  /**
+   * Get channels for a user
+   */
+  async getChannelsForUser(userId: string, teamId: string): Promise<any[]> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Retrieving channels for user', { userId, teamId });
+        
+        const channels = await this.client.getChannels(teamId);
+        
+        this.logger.debug('Channels for user retrieved successfully', { 
+          userId,
+          teamId,
+          channelCount: channels.length 
+        });
+        
+        return channels;
+      } catch (error) {
+        throw this.createApiError(error, `Failed to get channels for user: ${userId}`);
+      }
+    }, `getChannelsForUser(${userId}, ${teamId})`);
+  }
+
+  /**
+   * Leave a channel (bot leaves the channel)
+   */
+  async leaveChannel(channelId: string): Promise<any> {
+    return this.executeWithRetry(async () => {
+      try {
+        this.logger.debug('Leaving channel', { channelId, botUserId: this.botUser.id });
+        
+        const result = await this.client.removeFromChannel(this.botUser.id, channelId);
+        
+        this.logger.info('Successfully left channel', { 
+          channelId,
+          botUserId: this.botUser.id
+        });
+        
+        return result;
+      } catch (error) {
+        throw this.createApiError(error, `Failed to leave channel: ${channelId}`);
+      }
+    }, `leaveChannel(${channelId})`);
+  }
+
+  /**
    * Get channels for team (wrapper around getChannels for backward compatibility)
    */
   async getChannelsForTeam(teamId?: string): Promise<any[]> {

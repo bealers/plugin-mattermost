@@ -11,6 +11,7 @@ import { createSafeLogger } from '../config/credentials';
 import { RestClient } from '../clients/rest.client';
 import { WebSocketClient } from '../clients/websocket.client';
 import { MessageManager } from '../managers/message.manager';
+import { ChannelManager } from '../managers/channel.manager';
 import { ErrorHandler, ErrorSeverity, ServiceHealth } from '../utils/error-handler';
 
 /**
@@ -28,6 +29,7 @@ export class MattermostService extends Service {
     private restClient?: RestClient;
     private wsClient?: WebSocketClient;
     private messageManager?: MessageManager;
+    private channelManager?: ChannelManager;
     private errorHandler?: ErrorHandler;
     
     // Service state
@@ -172,7 +174,13 @@ export class MattermostService extends Service {
             await this.wsClient.connect();
             this.safeLogger.info('✅ WebSocket client connected and authenticated');
 
-            // Initialize Message Manager
+            // Initialize Channel Manager
+            this.safeLogger.info('📁 Initializing Channel Manager...');
+            this.channelManager = new ChannelManager(this.restClient, this.runtime!);
+            await this.channelManager.initialize();
+            this.safeLogger.info('✅ Channel Manager initialized successfully');
+
+            // Initialize Message Manager (depends on ChannelManager)
             this.safeLogger.info('💬 Initializing Message Manager...');
             this.messageManager = new MessageManager(
                 this.mattermostConfig,
@@ -443,6 +451,7 @@ export class MattermostService extends Service {
                !!this.restClient && 
                !!this.wsClient?.isConnected() &&
                !!this.messageManager?.isReady() &&
+               !!this.channelManager?.initialized &&
                !!this.botUser && 
                !!this.team;
     }
@@ -476,6 +485,13 @@ export class MattermostService extends Service {
     }
 
     /**
+     * Get Channel manager instance for external use
+     */
+    getChannelManager(): ChannelManager | undefined {
+        return this.channelManager;
+    }
+
+    /**
      * Cleanup and stop the service
      */
     private async cleanup(): Promise<void> {
@@ -496,6 +512,15 @@ export class MattermostService extends Service {
             }
         }
 
+        // Cleanup channel manager
+        if (this.channelManager) {
+            try {
+                await this.channelManager.cleanup();
+            } catch (error) {
+                this.safeLogger.warn('Error cleaning up channel manager:', error);
+            }
+        }
+
         // Disconnect WebSocket
         if (this.wsClient) {
             try {
@@ -509,6 +534,7 @@ export class MattermostService extends Service {
         this.restClient = undefined;
         this.wsClient = undefined;
         this.messageManager = undefined;
+        this.channelManager = undefined;
         this.botUser = undefined;
         this.team = undefined;
         this.isConnected = false;
