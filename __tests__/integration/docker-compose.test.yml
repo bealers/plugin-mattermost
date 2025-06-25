@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for ElizaOS
+  postgres-test:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: eliza_test
+      POSTGRES_USER: eliza
+      POSTGRES_PASSWORD: eliza_test_password
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eliza"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+
+  # ElizaOS Test Instance (based on eliza-coolify)
+  elizaos-test:
+    image: node:20-alpine
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      # Database connection
+      POSTGRES_URL: postgresql://eliza:eliza_test_password@postgres-test:5432/eliza_test
+      
+      # Mattermost configuration (from host environment)
+      MATTERMOST_SERVER_URL: ${MATTERMOST_SERVER_URL:-https://chat.siftware.com}
+      MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN}
+      MATTERMOST_BOT_USERNAME: ${MATTERMOST_BOT_USERNAME:-beaker}
+      MATTERMOST_WEBHOOK_TOKEN: ${MATTERMOST_WEBHOOK_TOKEN}
+
+      # ElizaOS configuration
+      NODE_ENV: test
+      LOG_LEVEL: debug
+      API_PORT: 3000
+      HOST: 0.0.0.0
+
+      # AI Provider
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      
+    ports:
+      - "3001:3000"
+    working_dir: /app
+    volumes:
+      - ../..:/plugin-source:ro  # Mount plugin source code
+    command: >
+      sh -c "
+        echo 'Setting up ElizaOS test environment...' &&
+        npm install -g @elizaos/cli@latest &&
+        mkdir -p /app &&
+        cd /app &&
+        npm init -y &&
+        npm install /plugin-source &&
+        echo '{
+          \"name\": \"IntegrationTestBot\",
+          \"plugins\": [
+            \"@elizaos/plugin-bootstrap\",
+            \"@bealers/plugin-mattermost\"
+          ],
+          \"settings\": {
+            \"model\": \"gpt-4o-mini\",
+            \"imageVisionModel\": \"gpt-4o-mini\"
+          }
+        }' > test.character.json &&
+        echo 'Starting ElizaOS...' &&
+        elizaos dev --character test.character.json
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  postgres_test_data: 
