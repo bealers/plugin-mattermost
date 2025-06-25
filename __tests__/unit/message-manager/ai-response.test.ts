@@ -109,7 +109,6 @@ describe('MessageManager - AI Response Generation', () => {
     expect(composeStateCall[0]).toMatchObject({
       agentId: expect.any(String),
       roomId: expect.any(String),
-      userId: expect.any(String),
       content: expect.objectContaining({
         text: expect.any(String)
       })

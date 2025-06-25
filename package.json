@@ -74,7 +74,7 @@
     "build": "tsup",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint . --fix",
-    "test": "vitest",
+    "test": "vitest run",
     "test:unit": "vitest run __tests__/unit",
     "test:integration": "vitest run __tests__/integration",
     "test:e2e": "vitest run __tests__/e2e --config vitest.e2e.config.ts",

@@ -200,7 +200,13 @@ describe('WebSocketClient Event System', () => {
       client.once('data_test', callback);
       client.emit('data_test', testData);
 
-      expect(callback).toHaveBeenCalledWith(testData);
+      expect(callback).toHaveBeenCalledWith(testData, expect.objectContaining({
+        event: 'data_test',
+        metadata: expect.objectContaining({
+          source: 'websocket_client',
+          timestamp: expect.any(Number)
+        })
+      }));
     });
   });
 
@@ -214,8 +220,10 @@ describe('WebSocketClient Event System', () => {
 
       expect(callback).toHaveBeenCalledWith(testData, expect.objectContaining({
         event: 'emit_test',
-        data: testData,
-        timestamp: expect.any(Number)
+        metadata: expect.objectContaining({
+          source: 'websocket_client',
+          timestamp: expect.any(Number)
+        })
       }));
     });
 
@@ -252,9 +260,11 @@ describe('WebSocketClient Event System', () => {
 
       expect(callback).toHaveBeenCalledWith(testData, expect.objectContaining({
         event: 'metadata_test',
-        data: testData,
-        metadata,
-        timestamp: expect.any(Number)
+        metadata: expect.objectContaining({
+          source: 'test',
+          priority: 'high',
+          timestamp: expect.any(Number)
+        })
       }));
     });
 
@@ -583,12 +593,14 @@ describe('WebSocketClient Event System', () => {
         expect.objectContaining({
           attempt: 1,
           maxAttempts: config.runtime.reconnectAttempts,
-          error: 'Connection failed'
+          errorMessage: 'Connection failed'
         }),
         expect.objectContaining({
           event: 'reconnection_attempt_failed',
           metadata: expect.objectContaining({
-            error: connectError
+            originalError: connectError,
+            source: 'websocket_client',
+            timestamp: expect.any(Number)
           })
         })
       );

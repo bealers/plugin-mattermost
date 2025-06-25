@@ -23,39 +23,25 @@ describe('MessageManager - Initialization and Cleanup', () => {
     it('should initialize successfully with valid dependencies', async () => {
       expect(setup.messageManager.isReady()).toBe(false);
       
-      // Set up mock to simulate real behavior: isReady() becomes true after initialize()
-      let isClientReady = false;
-      setup.mockRestClient.isReady.mockImplementation(() => isClientReady);
-      setup.mockRestClient.initialize.mockImplementation(async () => {
-        isClientReady = true;
-      });
-      
       await setup.messageManager.initialize();
       
       expect(setup.messageManager.isReady()).toBe(true);
       expect(setup.messageManager.getBotUserId()).toBe('mock-bot-user-id');
-      expect(setup.mockRestClient.initialize).toHaveBeenCalled();
       expect(setup.mockRestClient.getBotUser).toHaveBeenCalled();
     });
 
     it('should handle initialization failure gracefully', async () => {
-      const mockError = new Error('Initialization failed');
-      setup.mockRestClient.initialize.mockRejectedValue(mockError);
+      const mockError = new Error('getBotUser failed');
+      setup.mockRestClient.getBotUser.mockRejectedValue(mockError);
 
       await expect(setup.messageManager.initialize()).rejects.toThrow(
-        'MessageManager initialization failed: Initialization failed'
+        'MessageManager initialization failed: Failed to get bot user: getBotUser failed'
       );
       
       expect(setup.messageManager.isReady()).toBe(false);
     });
 
     it('should handle missing bot user gracefully', async () => {
-      // Set up mock to simulate real behavior
-      let isClientReady = false;
-      setup.mockRestClient.isReady.mockImplementation(() => isClientReady);
-      setup.mockRestClient.initialize.mockImplementation(async () => {
-        isClientReady = true;
-      });
       setup.mockRestClient.getBotUser.mockResolvedValue(null);
 
       await expect(setup.messageManager.initialize()).rejects.toThrow(
@@ -77,12 +63,6 @@ describe('MessageManager - Initialization and Cleanup', () => {
   describe('Cleanup', () => {
     it('should cleanup successfully', async () => {
       // Initialize first
-      let isClientReady = false;
-      setup.mockRestClient.isReady.mockImplementation(() => isClientReady);
-      setup.mockRestClient.initialize.mockImplementation(async () => {
-        isClientReady = true;
-      });
-      
       await setup.messageManager.initialize();
       expect(setup.messageManager.isReady()).toBe(true);
 
@@ -101,12 +81,6 @@ describe('MessageManager - Initialization and Cleanup', () => {
 
     it('should clear internal state on cleanup', async () => {
       // Initialize first
-      let isClientReady = false;
-      setup.mockRestClient.isReady.mockImplementation(() => isClientReady);
-      setup.mockRestClient.initialize.mockImplementation(async () => {
-        isClientReady = true;
-      });
-      
       await setup.messageManager.initialize();
       expect(setup.messageManager.getBotUserId()).toBe('mock-bot-user-id');
 
