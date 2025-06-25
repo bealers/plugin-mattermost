@@ -18,7 +18,7 @@ services:
     volumes:
       - postgres_test_data:/var/lib/postgresql/data
 
-  # ElizaOS Test Instance (based on eliza-coolify)
+  # ElizaOS Test Instance (based on eliza-coolify, see: https://github.com/bealers/eliza-coolify)
   elizaos-test:
     image: node:20-alpine
     depends_on:

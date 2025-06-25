@@ -10,13 +10,13 @@ import { v4 as uuidv4 } from 'uuid';
  * End-to-End Integration Test for Mattermost Plugin
  * 
  * This test suite validates the complete message flow:
- * 1. ElizaOS running in Docker (using eliza-coolify infrastructure)
- * 2. Production Mattermost server (chat.siftware.com)
+ * 1. ElizaOS running in Docker
+ * 2. Mattermost server
  * 3. Plugin components: REST client, WebSocket client, MessageManager
  * 
  * Test Strategy:
  * - Use Testcontainers to orchestrate ElizaOS Docker containers
- * - Connect to production Mattermost with existing credentials
+ * - Connect to Mattermost instance with supplied credentials
  * - Validate full message lifecycle: receive → process → respond
  */
 describe('End-to-End Messaging Integration', () => {
