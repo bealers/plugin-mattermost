@@ -77,7 +77,7 @@
     "test": "vitest",
     "test:unit": "vitest run __tests__/unit",
     "test:integration": "vitest run __tests__/integration",
-          "test:e2e": "vitest run __tests__/e2e --config vitest.e2e.config.ts",
+    "test:e2e": "vitest run __tests__/e2e --config vitest.e2e.config.ts",
     "test:e2e:messaging": "vitest run __tests__/e2e/message-scenarios.e2e.test.ts --config vitest.e2e.config.ts",
     "test:e2e:eliza": "vitest run __tests__/e2e/elizaos-integration.e2e.test.ts --config vitest.e2e.config.ts",
     "test:manual": "vitest run __tests__/manual",
