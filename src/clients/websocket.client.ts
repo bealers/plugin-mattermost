@@ -37,7 +37,7 @@ interface AuthMessage {
 export class WebSocketClient {
   private config: MattermostConfig;
   private runtime: IAgentRuntime;
-  private client: Client4;
+  private client: InstanceType<typeof Client4>;
   private ws: WebSocket | null = null;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number;
@@ -121,7 +121,8 @@ export class WebSocketClient {
       this.reconnectAttempts = 0;
       this.logger.info('WebSocket connected and authenticated successfully');
     } catch (error) {
-      this.logger.error(`WebSocket connection failed: ${error.message}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`WebSocket connection failed`, err);
       this.attemptReconnect();
       throw error;
     }
@@ -293,8 +294,8 @@ export class WebSocketClient {
       });
       
     } catch (error) {
-      this.logger.error(`Error handling WebSocket message: ${error.message}`, {
-        error: error.message,
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Error handling WebSocket message`, err, {
         data: data.toString().substring(0, 200) // Log first 200 chars for debugging
       });
     }
@@ -304,8 +305,7 @@ export class WebSocketClient {
    * Handle WebSocket errors
    */
   private handleError(error: Error): void {
-    this.logger.error(`WebSocket error: ${error.message}`, {
-      error: error.message,
+    this.logger.error(`WebSocket error`, error, {
       reconnectAttempts: this.reconnectAttempts
     });
   }
@@ -373,13 +373,13 @@ export class WebSocketClient {
 
       for (const listener of listeners) {
         try {
-          listener(eventInfo.data, eventInfo);
+          listener(eventInfo.data);
           successCount++;
         } catch (error) {
           errorCount++;
-          this.logger.error(`Error in event listener for ${event}: ${error.message}`, {
+          const err = error instanceof Error ? error : new Error(String(error));
+          this.logger.error(`Error in event listener for ${event}`, err, {
             event,
-            error: error.message,
             listenerIndex: successCount + errorCount
           });
         }
@@ -463,16 +463,17 @@ export class WebSocketClient {
         });
         
       } catch (error) {
-        this.logger.error(`Reconnection attempt ${this.reconnectAttempts} failed: ${error.message}`);
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.logger.error(`Reconnection attempt ${this.reconnectAttempts} failed`, err);
         
         // Emit reconnection attempt failed event
         this.emitEvent('reconnection_attempt_failed', {
           attempt: this.reconnectAttempts,
           maxAttempts: this.maxReconnectAttempts,
-          error: error.message
+          errorMessage: err.message
         }, {
           timestamp: Date.now(),
-          error: error
+          originalError: error
         });
         
         // Recursive call will happen through error handling in connect()
