@@ -1,4 +1,4 @@
-import { Client4 } from '@mattermost/client';
+import MattermostClient from '@mattermost/client';
 import { elizaLogger } from '@elizaos/core';
 import { MattermostConfig } from '../config';
 import { createSafeLogger } from '../config/credentials';
@@ -27,7 +27,7 @@ export class RestClient extends BaseClient {
 
   constructor(config: MattermostConfig) {
     const logger = createSafeLogger(elizaLogger);
-    const client = new Client4();
+    const client = new MattermostClient.Client4();
     
     super(client, config, logger);
     

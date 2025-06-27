@@ -2,6 +2,8 @@
 
 ElizaOS plugin for Mattermost integration. Enables AI agent communication through Mattermost channels with support for direct messages, thread conversations, and file attachments.
 
+PRE-RELEASE TESTING VERSION USE AT YOUR OWN RISK
+
 ## Installation
 
 ```bash

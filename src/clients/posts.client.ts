@@ -1,4 +1,4 @@
-import { Client4 } from '@mattermost/client';
+import MattermostClient from '@mattermost/client';
 import { MattermostConfig } from '../config';
 import { BaseClient } from './core/base-client';
 
@@ -26,7 +26,7 @@ export interface GetPostsOptions {
  * Dedicated client for managing post operations
  */
 export class PostsClient extends BaseClient {
-  constructor(client: InstanceType<typeof Client4>, config: MattermostConfig, logger: any) {
+  constructor(client: InstanceType<typeof MattermostClient.Client4>, config: MattermostConfig, logger: any) {
     super(client, config, logger);
   }
 

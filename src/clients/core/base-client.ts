@@ -1,4 +1,4 @@
-import { Client4 } from '@mattermost/client';
+import MattermostClient from '@mattermost/client';
 import { MattermostConfig } from '../../config';
 import { RateLimiter } from './rate-limiter';
 
@@ -123,11 +123,11 @@ export async function withRetry<T>(
  * Base client class with shared functionality for all Mattermost API clients
  */
 export abstract class BaseClient {
-  protected client: InstanceType<typeof Client4>;
+  protected client: InstanceType<typeof MattermostClient.Client4>;
   protected config: MattermostConfig;
   protected logger: any;
 
-  constructor(client: InstanceType<typeof Client4>, config: MattermostConfig, logger: any) {
+  constructor(client: InstanceType<typeof MattermostClient.Client4>, config: MattermostConfig, logger: any) {
     this.client = client;
     this.config = config;
     this.logger = logger;
