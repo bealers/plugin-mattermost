@@ -1,0 +1,14 @@
+{
+  "terminal.integrated.automationProfile.osx": {},
+  "terminal.integrated.defaultProfile.osx": "bash",
+  "terminal.integrated.shellIntegration.enabled": false,
+  "terminal.integrated.profiles.osx": {
+    "bash": {
+      "path": "/opt/homebrew/bin/bash",
+      "args": ["--rcfile", "~/.bashrc"]
+    }
+  },
+  "terminal.integrated.env.osx": {
+    "SHELL": "/opt/homebrew/bin/bash"
+  }
+} 
