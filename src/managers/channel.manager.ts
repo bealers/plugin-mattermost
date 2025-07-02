@@ -1,5 +1,6 @@
-import { IAgentRuntime } from '@elizaos/core';
+import { IAgentRuntime, elizaLogger } from '@elizaos/core';
 import { RestClient } from '../clients/rest.client';
+import { createSafeLogger } from '../config/credentials';
 
 /**
  * Channel Manager for handling channel operations and membership management
@@ -17,14 +18,11 @@ export class ChannelManager {
   private botUserId: string | null = null;
   private teamId: string | null = null;
   private isInitialized = false;
+  private logger = createSafeLogger(elizaLogger);
   
   constructor(restClient: RestClient, runtime: IAgentRuntime) {
     this.restClient = restClient;
     this.runtime = runtime;
-  }
-  
-  private get logger() {
-    return this.runtime.logger;
   }
   
   /**

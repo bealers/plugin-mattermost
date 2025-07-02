@@ -1,5 +1,6 @@
-import { IAgentRuntime } from '@elizaos/core';
+import { IAgentRuntime, elizaLogger } from '@elizaos/core';
 import { RestClient } from '../clients/rest.client';
+import { createSafeLogger } from '../config/credentials';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -21,15 +22,12 @@ export class AttachmentManager {
   private runtime: IAgentRuntime;
   private tempDir: string;
   private isInitialized = false;
+  private logger = createSafeLogger(elizaLogger);
   
   constructor(restClient: RestClient, runtime: IAgentRuntime) {
     this.restClient = restClient;
     this.runtime = runtime;
     this.tempDir = path.join(os.tmpdir(), 'mattermost-elizaos-files');
-  }
-  
-  private get logger() {
-    return this.runtime.logger;
   }
   
   /**
