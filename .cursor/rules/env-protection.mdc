@@ -1,0 +1,70 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# 🚨 CRITICAL ENVIRONMENT FILE PROTECTION 🚨
+
+## **ABSOLUTE RULES - NO EXCEPTIONS**
+
+- **NEVER CREATE .env files** - User manages all environment files
+- **NEVER MODIFY .env files** - Existing environment configuration is sacred
+- **NEVER OVERWRITE .env files** - Symlinks and shared configs must be preserved
+- **NEVER WRITE TO .env files** - Even appending is forbidden
+- **NEVER SCRIPT .env CREATION** - No automation that touches environment files
+- **NEVER SUGGEST .env CHANGES** - Ask user to make changes manually
+
+## **PROTECTED FILES & PATTERNS**
+
+- `.env` (especially if it's a symlink!)
+- `.env.*` (all environment variants)  
+- `**/.env*` (environment files in any directory)
+- `env.local`, `env.production`, etc.
+
+## **WHEN ENVIRONMENT SETUP IS NEEDED**
+
+- **✅ DO**: Create `.env.example` or `test.env.example` as templates
+- **✅ DO**: Document required environment variables in README
+- **✅ DO**: Ask user to copy example files manually
+- **✅ DO**: Provide instructions for environment setup
+
+- **❌ NEVER**: Create actual .env files
+- **❌ NEVER**: Write scripts that output to .env files  
+- **❌ NEVER**: Overwrite existing environment files
+- **❌ NEVER**: Break symlinks to shared environment files
+
+## **EMERGENCY PROTOCOL**
+
+If a script accidentally modifies .env files:
+1. **STOP IMMEDIATELY**
+2. **APOLOGISE PROFUSELY** 
+3. **HELP RESTORE** original configuration
+4. **ADD PREVENTION** measures to avoid repeat
+
+## **EXAMPLE VIOLATIONS TO AVOID**
+
+```bash
+# ❌ NEVER DO THIS
+echo "CONFIG=value" > .env
+cat >> .env << EOF
+
+# ❌ NEVER DO THIS  
+./scripts/create-env.sh
+
+# ❌ NEVER DO THIS
+ln -sf new-env .env
+```
+
+## **SAFE ALTERNATIVES**
+
+```bash
+# ✅ SAFE - Create example only
+cat > .env.example << EOF
+MATTERMOST_TOKEN=your-token-here
+EOF
+
+# ✅ SAFE - Provide instructions
+echo "Please copy .env.example to .env and configure"
+```
+
+**REMEMBER**: Environment files often contain secrets, production configs, or critical symlinks. Respect the user's setup completely.

@@ -44,6 +44,8 @@
   ],
   "dependencies": {
     "@elizaos/core": "latest",
+    "@elizaos/plugin-bootstrap": "1.0.15",
+    "@elizaos/plugin-openai": "1.0.6",
     "@mattermost/client": "^10.8.0",
     "axios": "^1.10.0",
     "ws": "^8.18.2",
@@ -88,7 +90,10 @@
     "type-check": "tsc --noEmit",
     "bot:start": "elizaos dev --character hiro.character.json",
     "test:websocket": "tsx scripts/test-websocket.ts",
-    "test:websocket-events": "tsx scripts/test-websocket-events.ts"
+    "test:websocket-events": "tsx scripts/test-websocket-events.ts",
+    "test:setup": "docker-compose -f docker-compose.test.yml up -d && ./scripts/init-mattermost-test.sh",
+    "test:teardown": "docker-compose -f docker-compose.test.yml down",
+    "test:containerized": "npm run test:setup && npm run test && npm run test:teardown"
   },
   "publishConfig": {
     "access": "public"

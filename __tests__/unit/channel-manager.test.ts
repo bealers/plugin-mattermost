@@ -96,7 +96,8 @@ describe('ChannelManager', () => {
 
       await expect(channelManager.initialize()).rejects.toThrow('Channel manager initialization failed: API Error');
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to initialize channel manager: API Error')
+        'Failed to initialize channel manager', 
+        expect.objectContaining({ message: 'API Error' })
       );
       expect(channelManager.initialized).toBe(false);
     });
@@ -190,7 +191,8 @@ describe('ChannelManager', () => {
 
       expect(result).toBe(false);
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error joining channel error-channel: Join failed')
+        'Error joining channel error-channel',
+        expect.objectContaining({ message: 'Join failed' })
       );
       expect(channelManager.isJoined('error-channel')).toBe(false);
     });
@@ -202,7 +204,8 @@ describe('ChannelManager', () => {
       
       expect(result).toBe(false);
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error joining channel test-channel: Channel manager not initialized')
+        'Error joining channel test-channel',
+        expect.objectContaining({ message: 'Channel manager not initialized' })
       );
     });
   });
@@ -233,7 +236,8 @@ describe('ChannelManager', () => {
 
       expect(result).toBe(false);
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error joining channel by name nonexistent: Channel not found')
+        'Error joining channel by name nonexistent',
+        expect.objectContaining({ message: 'Channel not found' })
       );
     });
 
@@ -244,7 +248,8 @@ describe('ChannelManager', () => {
       
       expect(result).toBe(false);
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error joining channel by name test-channel: Channel manager not initialized')
+        'Error joining channel by name test-channel',
+        expect.objectContaining({ message: 'Channel manager not initialized' })
       );
     });
   });
@@ -314,7 +319,8 @@ describe('ChannelManager', () => {
 
       expect(result).toBe(false);
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error leaving channel channel-1: Leave failed')
+        'Error leaving channel channel-1',
+        expect.objectContaining({ message: 'Leave failed' })
       );
     });
 
@@ -325,7 +331,8 @@ describe('ChannelManager', () => {
       
       expect(result).toBe(false);
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error leaving channel test-channel: Channel manager not initialized')
+        'Error leaving channel test-channel',
+        expect.objectContaining({ message: 'Channel manager not initialized' })
       );
     });
   });
@@ -363,7 +370,8 @@ describe('ChannelManager', () => {
 
       expect(result).toBe(false);
       expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('No access to channel inaccessible-channel: No access')
+        'No access to channel inaccessible-channel',
+        { error: 'No access' }
       );
     });
 
@@ -374,7 +382,8 @@ describe('ChannelManager', () => {
       
       expect(result).toBe(false);
       expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('No access to channel test-channel: Channel manager not initialized')
+        'No access to channel test-channel',
+        { error: 'Channel manager not initialized' }
       );
     });
   });
@@ -402,7 +411,8 @@ describe('ChannelManager', () => {
 
       expect(result).toBe('unknown');
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error getting channel type for error-channel: Channel not found')
+        'Error getting channel type for error-channel',
+        expect.objectContaining({ message: 'Channel not found' })
       );
     });
 
@@ -413,7 +423,8 @@ describe('ChannelManager', () => {
       
       expect(result).toBe('unknown');
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error getting channel type for test-channel: Channel manager not initialized')
+        'Error getting channel type for test-channel',
+        expect.objectContaining({ message: 'Channel manager not initialized' })
       );
     });
   });
@@ -477,7 +488,8 @@ describe('ChannelManager', () => {
 
       await expect(channelManager.refreshMemberships()).rejects.toThrow('API Error');
       expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error refreshing channel memberships: API Error')
+        'Error refreshing channel memberships',
+        expect.objectContaining({ message: 'API Error' })
       );
     });
 

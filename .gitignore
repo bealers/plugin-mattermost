@@ -1,10 +1,10 @@
-# Symlinks (convenience folders)
+# Dev sstuff
 docs
-.bealers/
-
-# Character files (not part of plugin)
-*.character.json
-hiro.character.json
+.bealers
+node_modules
+.eliza
+.taskmaster
+# ---
 
 # Build and runtime
 dist/
@@ -29,6 +29,7 @@ dev-debug.log
 node_modules/
 # Environment variables
 .env
+__tests__/generated-test-config.env
 # Editor directories and files
 .idea
 .vscode
@@ -39,3 +40,7 @@ node_modules/
 *.sw?
 # OS specific
 .DS_Store
+
+# Task files
+# tasks.json
+# tasks/ 

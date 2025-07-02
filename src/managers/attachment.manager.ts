@@ -1,6 +1,5 @@
 import { IAgentRuntime } from '@elizaos/core';
 import { RestClient } from '../clients/rest.client';
-import { createSafeLogger } from '../config/credentials';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -22,13 +21,15 @@ export class AttachmentManager {
   private runtime: IAgentRuntime;
   private tempDir: string;
   private isInitialized = false;
-  private logger: ReturnType<typeof createSafeLogger>;
   
   constructor(restClient: RestClient, runtime: IAgentRuntime) {
     this.restClient = restClient;
     this.runtime = runtime;
     this.tempDir = path.join(os.tmpdir(), 'mattermost-elizaos-files');
-    this.logger = createSafeLogger(console);
+  }
+  
+  private get logger() {
+    return this.runtime.logger;
   }
   
   /**
@@ -282,7 +283,7 @@ export class AttachmentManager {
         { rootId: postId }
       );
     } catch (error) {
-      this.logger.error(`Error reading text file: ${error.message}`);
+      this.logger.error('Error reading text file', error);
       await this.restClient.createPost(
         channelId,
         `I received the text file **${fileInfo.name}** but encountered an error reading its contents: ${error.message}`,

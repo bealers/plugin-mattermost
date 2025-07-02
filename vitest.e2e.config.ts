@@ -1,5 +1,14 @@
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { config } from 'dotenv';
+
+// Load test configuration for E2E tests (requires containerized setup)
+const testConfigPath = path.resolve(__dirname, '__tests__/generated-test-config.env');
+try {
+  config({ path: testConfigPath });
+} catch {
+  console.warn('Test configuration not found. Run "npm run test:setup" first.');
+}
 
 export default defineConfig({
   test: {

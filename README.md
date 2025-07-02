@@ -1,18 +1,29 @@
-# Mattermost ElizaOS Plugin
+# Mattermost elizaOS Plugin (Client)
 
-ElizaOS plugin for Mattermost integration. Enables AI agent communication through Mattermost channels with support for direct messages, thread conversations, and file attachments.
+This plugin enables [Mattermost](https://mattermost.com/), the open source team collaboration platform, to act as a client to the [elizaOS](https://github.com/elizaOS/eliza) AI agentic system. 
 
-PRE-RELEASE TESTING VERSION USE AT YOUR OWN RISK
+Built using the official [Mattermost TypeScript SDK](https://www.npmjs.com/package/@mattermost/client), this plugin enables seamless AI agent communication through Mattermost channels with support for direct messages, thread conversations, and file attachments.
+
+## Features
+
+- **Message Handling**: Process messages from channels and direct messages
+- **Thread Support**: Maintain conversation context in Mattermost threads
+- **File Attachments**: Send and receive files through Mattermost
+- **Channel Management**: Auto-join channels, manage permissions
+- **Error Recovery**: Automatic reconnection and error handling
+- **Testing:** Features comprehensive automated testing using containerized Mattermost instances. All tests run locally with automatic environment management.
+
+_**PRE-RELEASE TESTING VERSION USE AT YOUR OWN RISK**_
 
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-mattermost
+npm install @bealers/plugin-mattermost
 ```
 
 ## Configuration
 
-Create a `.env` file in your project root:
+Add these variables to your elizaOS environment `.env:`
 
 ```bash
 # Mattermost Configuration
@@ -34,87 +45,69 @@ MATTERMOST_DEFAULT_CHANNEL=general
 
 ## Usage
 
-Add the plugin to your ElizaOS character configuration:
+Add the plugin to your elizaOS character configuration:
 
-```typescript
-import { mattermostPlugin } from '@elizaos/plugin-mattermost';
-
-const character = {
-    plugins: [mattermostPlugin],
-    // ... other character config
-};
-```
-
-## Features
-
-- **Message Handling**: Process messages from channels and direct messages
-- **Thread Support**: Maintain conversation context in Mattermost threads
-- **File Attachments**: Send and receive files through Mattermost
-- **Channel Management**: Auto-join channels, manage permissions
-- **Error Recovery**: Automatic reconnection and error handling
-
-## API Reference
-
-### Core Components
-
-- `MattermostService`: Main service for Mattermost integration
-- `RestClient`: REST API client for Mattermost operations
-- `WebSocketClient`: Real-time WebSocket connection management
-- `MessageManager`: Handles message processing and AI responses
-
-### Configuration Schema
-
-```typescript
-interface MattermostConfig {
-    serverUrl: string;
-    botToken: string;
-    botUsername: string;
-    teamName: string;
-    defaultChannel?: string;
-    maxRetries?: number;
-    rateLimitRpm?: number;
+```json
+{
+    "name": "MyHelpfulCharacter",
+    "plugins": ["@elizaos/plugin-mattermost"],
+    "settings": {
+        "secrets": {},
+        "voice": {
+            "model": "en_US-hfc_female-medium"
+        }
+    }
 }
 ```
 
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Build the plugin
-npm run build
-
-# Run tests
-npm test
-
-# Integration tests (requires Mattermost server)
-npm run test:integration
-
-# Development with hot reload
-npm run dev
-```
 
 ## Testing
 
-Test structure:
-- `__tests__/unit/` - Component unit tests
-- `__tests__/integration/` - API integration tests
-- `__tests__/e2e/` - End-to-end testing scenarios
+### Quick Start
 
-Run specific test types:
 ```bash
-npm run test:unit
-npm run test:integration
-npm run test:e2e
+# Setup containerized test environment (once)
+npm run test:setup
+
+# Run all tests
+npm test
+
+# Cleanup when done
+npm run test:teardown
 ```
+
+### Test Types
+
+**Automated Tests:**
+- `npm test` - All tests (unit + integration)
+- `npm run test:unit` - Unit tests only  
+- `npm run test:integration` - Integration tests (requires container)
+- `npm run test:e2e` - End-to-end tests (requires container)
+
+**Manual/Interactive Tests:**
+- `npx tsx scripts/manual-tests/message-manager-testing.ts` - MessageManager error handling & circuit breakers
+- `npx tsx scripts/manual-tests/websocket-events-testing.ts` - Real-time WebSocket event monitoring
+- `npx tsx scripts/manual-tests/websocket-testing.ts` - Basic WebSocket connection testing
+
+### Test Structure
+
+- `__tests__/unit/` - Component unit tests
+- `__tests__/integration/` - API integration tests  
+- `__tests__/e2e/` - End-to-end testing scenarios
+- `scripts/manual-tests/` - Interactive debugging scripts
+
+### Detailed Documentation
+
+For comprehensive testing information:
+- **[Testing Guide](__tests__/README.md)** - Complete containerized testing setup and troubleshooting
+- **[Manual Testing Scripts](scripts/manual-tests/README.md)** - Interactive debugging tools and usage instructions
 
 ## Architecture
 
 ### Message Flow
 1. WebSocket receives message from Mattermost
 2. MessageManager processes and filters message
-3. ElizaOS generates AI response
+3. elizaOS generates AI response
 4. Response sent back through RestClient
 
 ### Thread Management
@@ -126,32 +119,6 @@ npm run test:e2e
 - Connection retry logic with exponential backoff
 - Graceful degradation for API failures
 - Health monitoring and status reporting
-
-## Troubleshooting
-
-### Common Issues
-
-**Connection Failed**
-- Verify `MATTERMOST_SERVER_URL` is correct
-- Check bot token has proper permissions
-- Ensure team name matches exactly
-
-**Bot Not Responding**
-- Confirm bot is added to the channel
-- Check channel permissions allow bot posting
-- Verify WebSocket connection is active
-
-**Authentication Errors**
-- Regenerate bot token in System Console
-- Ensure token has not expired
-- Check bot account is active
-
-### Debug Mode
-
-Enable debug logging:
-```bash
-DEBUG=mattermost:* npm start
-```
 
 ## License
 
