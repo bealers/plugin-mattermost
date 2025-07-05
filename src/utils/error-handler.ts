@@ -59,8 +59,8 @@ export class ErrorHandler {
     this.runtime = runtime;
     this.serviceStartTime = Date.now();
     
-    // Use runtime.logger if available, otherwise fall back to createSafeLogger
-    this.logger = runtime?.logger || createSafeLogger(console);
+    // Use createSafeLogger for consistent logging
+    this.logger = createSafeLogger(elizaLogger);
   }
 
   /**
@@ -99,10 +99,11 @@ export class ErrorHandler {
           context: options.context,
           stack: error.stack,
         });
-        // Emit critical error event to runtime
-        if (this.runtime && typeof this.runtime.emit === 'function') {
-          this.runtime.emit('MATTERMOST_CRITICAL_ERROR', errorDetails);
-        }
+        // Log critical error for monitoring
+        this.logger.error(`Critical error in Mattermost service`, {
+          errorDetails,
+          needsAttention: true
+        });
         break;
       case ErrorSeverity.MEDIUM:
       default:
@@ -161,11 +162,6 @@ export class ErrorHandler {
    * Report service health to ElizaOS runtime
    */
   reportHealth(serviceHealth: ServiceHealth): void {
-    // Emit health check event to runtime
-    if (this.runtime && typeof this.runtime.emit === 'function') {
-      this.runtime.emit('MATTERMOST_HEALTH_CHECK', serviceHealth);
-    }
-    
     // Log health status
     const { status, details } = serviceHealth;
     const message = `Service health: ${status}`;
