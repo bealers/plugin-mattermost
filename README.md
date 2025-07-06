@@ -27,10 +27,10 @@ Add these variables to your elizaOS environment `.env:`
 
 ```bash
 # Mattermost Configuration
-MATTERMOST_SERVER_URL=https://your-mattermost-server.com
-MATTERMOST_BOT_TOKEN=your-bot-token
+MATTERMOST_URL=https://your-mattermost-server.com
+MATTERMOST_TOKEN=your-bot-token
 MATTERMOST_BOT_USERNAME=eliza-bot
-MATTERMOST_TEAM_NAME=your-team-name
+MATTERMOST_TEAM=your-team-name
 
 # Optional: Channel Configuration
 MATTERMOST_DEFAULT_CHANNEL=general
