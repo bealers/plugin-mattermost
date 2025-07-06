@@ -1,4 +1,4 @@
-import { IAgentRuntime, elizaLogger, ModelType, Memory, Content, State } from '@elizaos/core';
+import { IAgentRuntime, elizaLogger, ModelType, Memory, Content, State, createUniqueUuid, ChannelType, HandlerCallback } from '@elizaos/core';
 import { createSafeLogger } from '../config/credentials';
 import { MattermostConfig } from '../config';
 import { WebSocketClient } from '../clients/websocket.client';
@@ -684,12 +684,35 @@ export class MessageManager {
         // Build enhanced context for thread-aware responses
         const conversationContext = this.buildConversationContext(message, context, metadata);
         
-        // Create Memory object for ElizaOS
+        // Generate consistent UUIDs for ElizaOS database
+        const roomId = createUniqueUuid(this.runtime, metadata.channelId);
+        const entityId = createUniqueUuid(this.runtime, metadata.userId);
+        const agentId = createUniqueUuid(this.runtime, this.botUserId || 'mattermost-bot');
+        const worldId = createUniqueUuid(this.runtime, this.config.env.MATTERMOST_URL || 'mattermost-server');
+
+        // Ensure room exists in ElizaOS database before processing
+        await this.runtime.ensureRoomExists({
+          id: roomId,
+          name: metadata.channelName,
+          source: 'mattermost',
+          type: metadata.isDirectMessage ? ChannelType.DM : ChannelType.GROUP,
+          channelId: metadata.channelId, // Store original Mattermost channel ID
+          serverId: this.config.env.MATTERMOST_URL,
+          worldId: worldId, // Associate room with world
+          metadata: {
+            isDirectMessage: metadata.isDirectMessage,
+            channelType: metadata.isDirectMessage ? 'D' : 'O',
+            platform: 'mattermost'
+          }
+        });
+        
+        // Create Memory object for ElizaOS with proper UUID conversion
         const memory: Memory = {
           id: uuidv4() as `${string}-${string}-${string}-${string}-${string}`,
-          entityId: metadata.userId as `${string}-${string}-${string}-${string}-${string}`,
-          agentId: (this.botUserId || 'mattermost-bot') as `${string}-${string}-${string}-${string}-${string}`,
-          roomId: metadata.channelId as `${string}-${string}-${string}-${string}-${string}`,
+          entityId: entityId,
+          agentId: agentId,
+          roomId: roomId,
+          worldId: worldId, // ✅ FIXED: Add missing worldId field
           content: {
             text: message,
             source: 'mattermost',
@@ -706,65 +729,48 @@ export class MessageManager {
           createdAt: Date.now()
         };
 
-        // Create State object with conversation context  
-        const state: State = {
-          userId: metadata.userId,
-          agentId: this.botUserId || 'mattermost-bot',
-          roomId: metadata.channelId,
-          bio: '', // Bot's bio - could be enhanced
-          lore: '', // Bot's background knowledge
-          messageDirections: '',
-          postDirections: '',
-          recentMessages: context ? this.formatThreadContextForState(context) : [],
-          recentMessagesData: context?.posts || [],
-          goals: [], // Could be enhanced with conversation goals
-          goalsData: [],
-          actionNames: '', // Available actions
-          actions: [], // Action instances
-          providers: [], // Available providers
-          responseData: {},
-          knowledge: conversationContext, // Our enhanced context
-          keyEvents: [], // Key conversation events
-          // Add missing properties for State interface
-          values: {},
-          data: {},
-          text: ''
+        // Build context for AI response generation using ElizaOS composeState
+        const composedState: State = await this.runtime.composeState(memory);
+
+        // Enhance state with conversation context
+        const enhancedContext = `${composedState.text || ''}\n\n${conversationContext}\n\n${this.getResponseTemplate(metadata)}`.trim();
+
+        // Generate response using ElizaOS action system instead of direct AI call
+        let actionResponse = '';
+        const actionCallback: HandlerCallback = async (content) => {
+          this.logger.debug('Action callback received', {
+            hasText: !!content.text,
+            textLength: content.text?.length || 0
+          });
+          
+          if (content.text) {
+            actionResponse = content.text;
+          }
+          return [];
         };
 
-        // Generate response using ElizaOS runtime with proper context
-        const aiResponse: unknown = await this.runtime.composeState(memory, [
-          conversationContext,
-          this.getResponseTemplate(metadata)
-        ]);
+        // Process through action system
+        await this.runtime.processActions(
+          memory,
+          [],
+          composedState,
+          actionCallback
+        );
 
-        // Extract and validate response
-        let responseText: string;
-        if (aiResponse && typeof aiResponse === 'string') {
-          const trimmedResponse = aiResponse.trim();
-          if (trimmedResponse) {
-            responseText = trimmedResponse;
-          } else {
-            responseText = this.generateFallbackResponse(metadata);
-          }
-        } else if (aiResponse && typeof aiResponse === 'object' && 'text' in aiResponse) {
-          const extractedText = String((aiResponse as any).text || '');
-          const trimmedText = extractedText.trim();
-          if (trimmedText) {
-            responseText = trimmedText;
-          } else {
-            responseText = this.generateFallbackResponse(metadata);
-          }
-        } else {
-          // Fallback response based on context
-          responseText = this.generateFallbackResponse(metadata);
+        // Use action response if available, otherwise fall back to clean response
+        let finalResponse = actionResponse;
+        
+        if (!finalResponse || finalResponse.trim().length === 0) {
+          this.logger.info('No action response generated, using clean fallback');
+          finalResponse = this.generateFallbackResponse(metadata);
         }
 
-        // Ensure response is not empty
-        if (!responseText) {
-          responseText = this.generateFallbackResponse(metadata);
+        // Validate and return clean response
+        if (!finalResponse) {
+          return this.generateFallbackResponse(metadata);
         }
 
-        return responseText;
+        return finalResponse;
 
       }, 'ai-generation', 'AI response generation');
 
@@ -903,23 +909,62 @@ export class MessageManager {
   }
 
   /**
-   * Generate a contextually appropriate fallback response
+   * Generate clean fallback response with structured error codes
    * @private
    */
-  private generateFallbackResponse(metadata: {
-    isDirectMessage: boolean;
-    isMention: boolean;
-    isThreadReply: boolean;
-    senderName: string;
-  }): string {
+  private generateFallbackResponse(
+    metadata: {
+      userId: string;
+      channelId: string;
+      isDirectMessage: boolean;
+      isMention: boolean;
+      isThreadReply: boolean;
+      threadId: string;
+      senderName: string;
+      channelName: string;
+    },
+    errorCode?: string,
+    debugInfo?: any
+  ): string {
+    // Log structured error for debugging (never shown to user)
+    if (errorCode) {
+      this.logger.error('Response generation failed', {
+        errorCode,
+        channelId: metadata.channelId,
+        userId: metadata.userId,
+        isDirectMessage: metadata.isDirectMessage,
+        debugInfo,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // User-friendly responses based on context
+    const responses = {
+      // Error responses with codes (for support debugging)
+      'AI_TIMEOUT': "I'm taking a bit longer to respond than usual. Please try again in a moment! ⏱️",
+      'ACTION_SYSTEM_ERROR': "I encountered an issue processing your message. Please try rephrasing it! 🔄", 
+      'PROVIDER_ERROR': "I'm having trouble accessing some context right now. Please try again! 📡",
+      'DATABASE_ERROR': "I'm experiencing some technical difficulties. Please try again shortly! 🔧",
+      'VALIDATION_ERROR': "I didn't quite understand that request. Could you try asking differently? 🤔",
+      
+      // Context-aware fallbacks
+      'DEFAULT_DM': metadata.senderName 
+        ? `Hi ${metadata.senderName}! I'm here to help. What can I assist you with today? 😊`
+        : "Hello! I'm here to help. What can I assist you with? 😊",
+      'DEFAULT_CHANNEL': `Hi there! I'm here to help in ${metadata.channelName}. What can I do for you? 👋`,
+      'DEFAULT_GENERIC': "I'm here and ready to help! What would you like to know? ✨"
+    };
+
+    // Return appropriate response
+    if (errorCode && responses[errorCode]) {
+      return responses[errorCode];
+    }
+
+    // Context-aware fallback
     if (metadata.isDirectMessage) {
-      return `Hi ${metadata.senderName}! I received your message, but I'm having trouble generating a response right now. Could you try rephrasing your question?`;
-    } else if (metadata.isThreadReply) {
-      return "I'm following this thread discussion, but I'm having trouble generating a response at the moment. Please try again!";
-    } else if (metadata.isMention) {
-      return `Thanks for mentioning me, ${metadata.senderName}! I'm having some technical difficulties right now, but I'll be back to help soon.`;
+      return responses.DEFAULT_DM;
     } else {
-      return "I'm experiencing some technical issues right now. Please try your request again in a moment!";
+      return responses.DEFAULT_CHANNEL;
     }
   }
 
@@ -1472,7 +1517,20 @@ END OF FILE`;
         } catch (postError) {
           // If posting fails, try to send a simple error message
           const errorType = this.categorizeError(postError);
-          const userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
+          const userMessage = this.generateFallbackResponse(
+            {
+              userId: post.user_id,
+              channelId: post.channel_id,
+              isDirectMessage,
+              isMention,
+              isThreadReply: !!post.root_id,
+              threadId: post.root_id || post.id,
+              senderName: eventData.sender_name,
+              channelName: eventData.channel_name
+            },
+            errorType.toString(),
+            { error: postError instanceof Error ? postError.message : String(postError) }
+          );
           
           try {
             const fallbackRootId = shouldReplyInThread ? threadId : undefined;
@@ -1490,7 +1548,20 @@ END OF FILE`;
         let userMessage: string;
 
         if (this.errorConfig.enableFallbackMessages) {
-          userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
+          userMessage = this.generateFallbackResponse(
+            {
+              userId: post.user_id,
+              channelId: post.channel_id,
+              isDirectMessage,
+              isMention,
+              isThreadReply: !!post.root_id,
+              threadId: post.root_id || post.id,
+              senderName: eventData.sender_name,
+              channelName: eventData.channel_name
+            },
+            errorType.toString(),
+            { error: aiResult.error }
+          );
         } else {
           userMessage = "I'm temporarily unavailable. Please try again later! 🤖";
         }
@@ -1525,7 +1596,20 @@ END OF FILE`;
       // Try to send an error message to the user as last resort
       if (this.errorConfig.enableFallbackMessages) {
         try {
-          const userMessage = this.getUserFriendlyErrorMessage(errorType, isDirectMessage);
+          const userMessage = this.generateFallbackResponse(
+            {
+              userId: post.user_id,
+              channelId: post.channel_id,
+              isDirectMessage,
+              isMention,
+              isThreadReply: !!post.root_id,
+              threadId: post.root_id || post.id,
+              senderName: eventData.sender_name,
+              channelName: eventData.channel_name
+            },
+            errorType.toString(),
+            { error: errorMessage }
+          );
           // Determine if we should reply in thread for error messages too
           const errorRootId = (post.root_id || (!isDirectMessage && isMention)) ? (post.root_id || post.id) : undefined;
           await this.postResponse(post.channel_id, userMessage, errorRootId);

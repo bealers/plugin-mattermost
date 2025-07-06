@@ -9,12 +9,26 @@ export default defineConfig({
   format: ['esm'], // Ensure you're targeting CommonJS
   dts: true, // require DTS so we get d.ts in the dist folder on npm
   external: [
-    'dotenv', // Externalize dotenv to prevent bundling
-    'fs', // Externalize fs to use Node.js built-in module
-    'path', // Externalize other built-ins if necessary
+    // Node.js built-ins
+    'dotenv',
+    'fs',
+    'path',
     'https',
     'http',
+    'crypto',
+    'util',
+    'events',
+    'stream',
+    'buffer',
+    'url',
+    // Core dependencies
     '@elizaos/core',
     'zod',
+    // Common problematic dependencies
+    'mime-types',
+    'mime-db',
+    'form-data',
+    'ws',
+    'axios',
   ],
 });

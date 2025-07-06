@@ -15,12 +15,16 @@ import { ChannelManager } from '../managers/channel.manager';
 import { AttachmentManager } from '../managers/attachment.manager';
 import { ErrorHandler, ErrorSeverity, ServiceHealth } from '../utils/error-handler';
 
-/**
- * Enhanced Mattermost Service with comprehensive error handling and resilience
- */
 export class MattermostService extends Service {
     static serviceType = 'mattermost';
     capabilityDescription = 'Mattermost platform integration service with real-time messaging, error handling, and resilience';
+
+    // Debug static properties
+    static {
+        console.log('🔍 [DEBUG] MattermostService class loaded');
+        console.log('🔍 [DEBUG] serviceType:', this.serviceType);
+        console.log('🔍 [DEBUG] Service base class:', !!Service);
+    }
 
     private isConnected: boolean = false;
     private mattermostConfig?: MattermostConfig;
@@ -43,9 +47,15 @@ export class MattermostService extends Service {
 
     constructor(runtime?: IAgentRuntime) {
         super(runtime);
+        console.log('🔍 [DEBUG] MattermostService constructor called');
+        console.log('🔍 [DEBUG] Runtime provided:', !!runtime);
+        console.log('🔍 [DEBUG] Service type:', MattermostService.serviceType);
     }
 
     static async start(runtime: IAgentRuntime): Promise<MattermostService> {
+        console.log('🔍 [DEBUG] MattermostService.start() called');
+        console.log('🔍 [DEBUG] Runtime in start method:', !!runtime);
+        
         const safeLogger = createSafeLogger(elizaLogger);
         safeLogger.info('*** STARTING MATTERMOST SERVICE ***');
         

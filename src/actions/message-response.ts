@@ -1,8 +1,67 @@
 import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import { elizaLogger } from '@elizaos/core';
+
+/**
+ * Sanitize response to remove any debug information or unwanted patterns
+ */
+function sanitizeResponse(response: string): string {
+    if (!response) return '';
+    
+    return response
+        .replace(/\[DEBUG\].*$/gm, '')
+        .replace(/console\.log\(.*\)/g, '')
+        .replace(/🔍|✅|❌/g, '')
+        .replace(/\[ERROR\].*$/gm, '')
+        .replace(/\[SUCCESS\].*$/gm, '')
+        .replace(/Possible response actions:.*$/gm, '')
+        .replace(/Available Actions.*$/gm, '')
+        .replace(/Action Examples.*$/gm, '')
+        .replace(/undefined:/g, '')
+        .replace(/\n\s*\n/g, '\n')
+        .trim();
+}
+
+/**
+ * Generate user-friendly fallback response when AI generation fails
+ */
+function generateFallbackResponse(metadata: {
+    isDirectMessage: boolean;
+    senderName?: string;
+}): string {
+    if (metadata.isDirectMessage) {
+        return `Hi${metadata.senderName ? ` ${metadata.senderName}` : ''}! I received your message, but I'm having trouble generating a response right now. Could you try rephrasing your question?`;
+    } else {
+        return "I'm following this discussion, but I'm having trouble generating a response at the moment. Please try again!";
+    }
+}
+
+/**
+ * Validate response quality to ensure it meets standards
+ */
+function validateResponse(response: string): boolean {
+    // Check for minimum length
+    if (response.length < 5) return false;
+    
+    // Check for common error patterns that shouldn't reach users
+    const errorPatterns = [
+        'I don\'t know how to',
+        'I cannot access',
+        'As an AI language model',
+        'undefined',
+        'null',
+        '[object Object]',
+        'console.log',
+        'DEBUG',
+        'ERROR'
+    ];
+    
+    const lowerResponse = response.toLowerCase();
+    return !errorPatterns.some(pattern => lowerResponse.includes(pattern.toLowerCase()));
+}
 
 /**
  * Basic Mattermost message response action
- * This handles general message processing and responses
+ * This handles general message processing and responses with clean output
  */
 export const mattermostMessageAction: Action = {
     name: "MATTERMOST_MESSAGE",
@@ -59,36 +118,74 @@ export const mattermostMessageAction: Action = {
         callback?: HandlerCallback
     ): Promise<boolean> => {
         try {
-            console.log('🔍 [DEBUG] Mattermost message action triggered');
-            console.log('🔍 [DEBUG] Message content:', message.content?.text);
+            elizaLogger.debug('Processing Mattermost message', {
+                messageId: message.id,
+                roomId: message.roomId,
+                hasContent: !!message.content?.text
+            });
             
             // Get the Mattermost service
             const mattermostService = runtime.getService('mattermost');
             if (!mattermostService) {
-                console.log('❌ [ERROR] Mattermost service not available');
+                elizaLogger.error('Mattermost service not available');
                 return false;
             }
 
-            // Generate a response using the runtime's AI capabilities
+            // Extract message context
+            const userMessage = message.content?.text || '';
+            const isDirectMessage = message.content?.metadata?.isDirectMessage || false;
+            const channelName = message.content?.metadata?.channelName || 'a channel';
+            const senderName = message.content?.metadata?.senderName || 'user';
+            
+            // Create context-appropriate prompt
+            let contextPrompt = '';
+            if (isDirectMessage) {
+                contextPrompt = `You are having a friendly private conversation with ${senderName}. Respond naturally and helpfully.`;
+            } else {
+                contextPrompt = `You are participating in the ${channelName} team channel. Respond appropriately for a public channel discussion.`;
+            }
+            
+            // Generate response with clean context
             const responseText = await runtime.generateText({
-                context: `You are responding to a message in Mattermost. 
-                         User message: "${message.content?.text}"
-                         Respond naturally and helpfully.`,
-                maxLength: 1000
+                context: `${contextPrompt}\n\nUser message: "${userMessage}"\n\nRespond naturally and conversationally.`,
+                maxLength: 500,
+                temperature: 0.7,
+                stop: ['\\n\\nUser:', '\\n\\nHuman:', '<|endoftext|>']
             });
 
-            console.log('🔍 [DEBUG] Generated response:', responseText);
+            // Sanitize and validate the response
+            const sanitizedResponse = sanitizeResponse(responseText);
+            
+            elizaLogger.debug('Generated response', {
+                originalLength: responseText.length,
+                sanitizedLength: sanitizedResponse.length,
+                messageId: message.id
+            });
 
-            // Send the response back to Mattermost
-            if (message.roomId) {
-                await mattermostService.sendMessage(message.roomId, responseText);
-                console.log('✅ [SUCCESS] Response sent to Mattermost');
+            // Validate response quality
+            let finalResponse = sanitizedResponse;
+            if (!validateResponse(sanitizedResponse)) {
+                elizaLogger.warn('Generated response failed validation, using fallback', {
+                    messageId: message.id,
+                    originalResponse: sanitizedResponse
+                });
+                finalResponse = generateFallbackResponse({ isDirectMessage, senderName });
             }
 
-            // Call the callback if provided (for ElizaOS framework)
+            // Send the response to Mattermost
+            if (message.roomId && finalResponse) {
+                await mattermostService.sendMessage(message.roomId, finalResponse);
+                elizaLogger.info('Response sent to Mattermost', {
+                    roomId: message.roomId,
+                    messageId: message.id,
+                    responseLength: finalResponse.length
+                });
+            }
+
+            // Call the callback for ElizaOS framework integration
             if (callback) {
                 await callback({
-                    text: responseText,
+                    text: finalResponse,
                     source: 'mattermost',
                     actions: ['MATTERMOST_MESSAGE']
                 });
@@ -96,7 +193,26 @@ export const mattermostMessageAction: Action = {
 
             return true;
         } catch (error) {
-            console.log('❌ [ERROR] Failed to process Mattermost message:', error);
+            elizaLogger.error('Failed to process Mattermost message', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                messageId: message.id,
+                roomId: message.roomId
+            });
+            
+            // Provide user-friendly error message via callback
+            if (callback) {
+                const errorMessage = generateFallbackResponse({
+                    isDirectMessage: message.content?.metadata?.isDirectMessage || false,
+                    senderName: message.content?.metadata?.senderName
+                });
+                
+                await callback({
+                    text: errorMessage,
+                    source: 'mattermost',
+                    actions: ['MATTERMOST_MESSAGE']
+                });
+            }
+            
             return false;
         }
     }
