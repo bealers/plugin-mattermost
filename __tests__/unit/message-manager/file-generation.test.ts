@@ -244,7 +244,7 @@ describe('MessageManager - File Generation Commands', () => {
 
       expect(mockRestClient.createPost).toHaveBeenCalledWith(
         post.channel_id,
-        '🔄 Processing your file generation request...',
+        'Processing your file generation request...',
         { rootId: post.id }
       );
 
@@ -324,7 +324,7 @@ describe('MessageManager - File Generation Commands', () => {
       // Should send the processing message
       expect(mockRestClient.createPost).toHaveBeenCalledWith(
         post.channel_id,
-        '🔄 Processing your file generation request...',
+        'Processing your file generation request...',
         { rootId: post.id }
       );
 
@@ -418,7 +418,7 @@ describe('MessageManager - File Generation Commands', () => {
 
       expect(mockRestClient.createPost).toHaveBeenCalledWith(
         post.channel_id,
-        '🔄 Processing your file generation request...',
+        'Processing your file generation request...',
         { rootId: 'thread123' }
       );
     });

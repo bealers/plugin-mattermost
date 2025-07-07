@@ -1,8 +1,10 @@
-# Mattermost elizaOS Plugin (Client)
+# Mattermost elizaOS Plugin
 
-This plugin enables [Mattermost](https://mattermost.com/), the open source team collaboration platform, to act as a client to the [elizaOS](https://github.com/elizaOS/eliza) AI agentic system. 
+This plugin enables [Mattermost](https://mattermost.com/), the open source team collaboration platform, to act as a client to the [elizaOS](https://github.com/elizaOS/eliza) multi AI agent orchestration system.
 
 Built using the official [Mattermost TypeScript SDK](https://www.npmjs.com/package/@mattermost/client), this plugin enables seamless AI agent communication through Mattermost channels with support for direct messages, thread conversations, and file attachments.
+
+*This plugin is not affiliated with, endorsed by, or sponsored by Mattermost, Inc. Mattermost is a registered trademark of Mattermost, Inc.*
 
 ## Features
 
@@ -11,9 +13,6 @@ Built using the official [Mattermost TypeScript SDK](https://www.npmjs.com/packa
 - **File Attachments**: Send and receive files through Mattermost
 - **Channel Management**: Auto-join channels, manage permissions
 - **Error Recovery**: Automatic reconnection and error handling
-- **Testing:** Features comprehensive automated testing using containerized Mattermost instances. All tests run locally with automatic environment management.
-
-_**PRE-RELEASE TESTING VERSION USE AT YOUR OWN RISK**_
 
 ## Installation
 
@@ -23,7 +22,7 @@ npm install @bealers/plugin-mattermost
 
 ## Configuration
 
-Add these variables to your elizaOS environment `.env:`
+Add these variables to your elizaOS environment `.env`:
 
 ```bash
 # Mattermost Configuration
@@ -50,57 +49,32 @@ Add the plugin to your elizaOS character configuration:
 ```json
 {
     "name": "MyHelpfulCharacter",
-    "plugins": ["@elizaos/plugin-mattermost"],
-    "settings": {
-        "secrets": {},
-        "voice": {
-            "model": "en_US-hfc_female-medium"
-        }
-    }
+      "plugins": [
+        "@elizaos/plugin-bootstrap",
+        "@elizaos/plugin-openai",
+        "@bealers/plugin-mattermost"
+  ],
 }
 ```
 
-
 ## Testing
 
-### Quick Start
+The plugin includes a test suite.
 
 ```bash
-# Setup containerized test environment (once)
-npm run test:setup
-
 # Run all tests
 npm test
 
-# Cleanup when done
-npm run test:teardown
+# Run specific test categories
+npm run test:unit        # Unit tests only
+npm run test:coverage    # With coverage report
 ```
-
-### Test Types
-
-**Automated Tests:**
-- `npm test` - All tests (unit + integration)
-- `npm run test:unit` - Unit tests only  
-- `npm run test:integration` - Integration tests (requires container)
-- `npm run test:e2e` - End-to-end tests (requires container)
-
-**Manual/Interactive Tests:**
-- `npx tsx scripts/manual-tests/message-manager-testing.ts` - MessageManager error handling & circuit breakers
-- `npx tsx scripts/manual-tests/websocket-events-testing.ts` - Real-time WebSocket event monitoring
-- `npx tsx scripts/manual-tests/websocket-testing.ts` - Basic WebSocket connection testing
 
 ### Test Structure
 
 - `__tests__/unit/` - Component unit tests
-- `__tests__/integration/` - API integration tests  
-- `__tests__/e2e/` - End-to-end testing scenarios
-- `scripts/manual-tests/` - Interactive debugging scripts
+- `__tests__/utils/` - Test utilities and mock factories
 
-### Detailed Documentation
-
-For comprehensive testing information:
-- **[Testing Guide](__tests__/README.md)** - Complete containerized testing setup and troubleshooting
-- **[Manual Testing Scripts](scripts/manual-tests/README.md)** - Interactive debugging tools and usage instructions
 
 ## Architecture
 
@@ -119,6 +93,11 @@ For comprehensive testing information:
 - Connection retry logic with exponential backoff
 - Graceful degradation for API failures
 - Health monitoring and status reporting
+
+## Contributing
+
+PRs welcome for fixes.
+
 
 ## License
 

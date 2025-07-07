@@ -1,28 +1,10 @@
-import { vi, MockedFunction } from 'vitest';
+import { vi, MockedFunction, expect } from 'vitest';
 import { IAgentRuntime, ModelType } from '@elizaos/core';
 import { MessageManager } from '../../../src/managers/message.manager';
 import { WebSocketClient } from '../../../src/clients/websocket.client';
 import { RestClient } from '../../../src/clients/rest.client';
 import { MattermostConfig } from '../../../src/config';
-import { createMockConfig, createMockRuntime, createMockWebSocketClient, createMockRestClient } from '../../utils/test-utils';
-
-// Mock ElizaOS imports
-vi.mock('@elizaos/core', () => {
-  const mockLogger = {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn()
-  };
-  
-  return {
-    elizaLogger: mockLogger,
-    ModelType: {
-      TEXT_LARGE: 'TEXT_LARGE'
-    },
-    createSafeLogger: vi.fn(() => mockLogger)
-  };
-});
+import { createMockConfig, createMockRuntime, createMockWebSocketClient, createMockRestClient } from '../../utils/run-tests';
 
 export interface MessageManagerTestSetup {
   messageManager: MessageManager;
@@ -41,6 +23,15 @@ export function createMessageManagerTestSetup(): MessageManagerTestSetup {
   const mockWsClient = createMockWebSocketClient() as any;
   const mockRestClient = createMockRestClient() as any;
 
+  // Create mock attachment manager
+  const mockAttachmentManager = {
+    processFileAttachments: vi.fn().mockResolvedValue(undefined),
+    downloadFile: vi.fn().mockResolvedValue(undefined),
+    uploadFile: vi.fn().mockResolvedValue(undefined),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    cleanup: vi.fn().mockResolvedValue(undefined)
+  } as any;
+
   // Setup useModel mock
   const useModelMock = vi.fn().mockResolvedValue('Mock AI response');
   mockRuntime.useModel = useModelMock;
@@ -49,12 +40,13 @@ export function createMessageManagerTestSetup(): MessageManagerTestSetup {
   const composeStateMock = vi.fn().mockResolvedValue('Mocked AI response');
   mockRuntime.composeState = composeStateMock;
 
-  // Create MessageManager instance
+  // Create MessageManager instance with all required parameters
   const messageManager = new MessageManager(
     mockConfig,
     mockRuntime,
     mockWsClient,
-    mockRestClient
+    mockRestClient,
+    mockAttachmentManager
   );
 
   return {
@@ -69,15 +61,49 @@ export function createMessageManagerTestSetup(): MessageManagerTestSetup {
 }
 
 // Helper function to process message and wait for async completion
-export const processMessageAndWait = async (mockWsClient: WebSocketClient, messageData: any) => {
-  const postedHandler = vi.mocked(mockWsClient.on).mock.calls
+export async function processMessageAndWait(mockWsClient: WebSocketClient, messageData: any, setup?: MessageManagerTestSetup) {
+  const postedHandler = (mockWsClient.on as any).mock.calls
     .find(call => call[0] === 'posted')?.[1];
   expect(postedHandler).toBeDefined();
   
   await postedHandler!(messageData);
-  // Wait for async processing via setImmediate
-  await new Promise(resolve => setImmediate(resolve));
-};
+  
+  // If setup is provided, wait for either composeState or createPost to be called
+  if (setup) {
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds total
+    const initialComposeStateCalls = setup.composeStateMock.mock.calls.length;
+    const initialCreatePostCalls = setup.mockRestClient.posts.createPost.mock.calls.length;
+    
+    while (attempts < maxAttempts) {
+      // Wait for one async cycle
+      await new Promise(resolve => setImmediate(resolve));
+      
+      // Check if either composeState or createPost was called
+      const composeStateCalls = setup.composeStateMock.mock.calls.length;
+      const createPostCalls = setup.mockRestClient.posts.createPost.mock.calls.length;
+      
+      if (composeStateCalls > initialComposeStateCalls || createPostCalls > initialCreatePostCalls) {
+        // Wait a bit more for any remaining async operations
+        await new Promise(resolve => setImmediate(resolve));
+        await new Promise(resolve => setImmediate(resolve));
+        break;
+      }
+      
+      attempts++;
+    }
+    
+    // Log if we timed out
+    if (attempts >= maxAttempts) {
+      console.log('processMessageAndWait timed out after', maxAttempts, 'attempts');
+    }
+  } else {
+    // Fallback to original approach if no setup provided
+    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setImmediate(resolve));
+  }
+}
 
 // Create mock WebSocket event with common defaults
 export function createMockWebSocketEvent(options: {
@@ -130,30 +156,35 @@ export function createMockWebSocketEvent(options: {
   };
 }
 
-// Common test data
-export const testData = {
-  directMessage: () => createMockWebSocketEvent({
-    channelType: 'D',
-    channelName: 'user__bot',
-    message: 'Hello bot!'
-  }),
-  
-  mentionMessage: () => createMockWebSocketEvent({
-    channelType: 'O',
-    channelName: 'general',
-    message: '@bot help me',
-    mentions: '@bot'
-  }),
-  
-  threadReply: (rootId: string) => createMockWebSocketEvent({
-    channelType: 'O',
-    channelName: 'general',
-    message: 'This is a thread reply',
-    rootId: rootId
-  }),
-  
-  botMessage: () => createMockWebSocketEvent({
-    userId: 'mock-bot-user-id',
-    message: 'Bot response'
-  })
-}; 
+// Common test data factory functions
+export function createTestData() {
+  return {
+    directMessage: () => createMockWebSocketEvent({
+      channelType: 'D',
+      channelName: 'user__bot',
+      message: 'Hello bot!'
+    }),
+    
+    mentionMessage: () => createMockWebSocketEvent({
+      channelType: 'O',
+      channelName: 'general',
+      message: '@bot help me',
+      mentions: '@bot'
+    }),
+    
+    threadReply: (rootId: string) => createMockWebSocketEvent({
+      channelType: 'O',
+      channelName: 'general',
+      message: 'This is a thread reply',
+      rootId: rootId
+    }),
+    
+    botMessage: () => createMockWebSocketEvent({
+      userId: 'mock-bot-user-id',
+      message: 'Bot response'
+    })
+  };
+}
+
+// Export for backward compatibility
+export const testData = createTestData(); 

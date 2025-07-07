@@ -8,10 +8,10 @@ elizaLogger.debug('Plugin index.ts loading', {
     actionsCount: mattermostActions.length
 });
 
-// Define the plugin object with proper ElizaOS structure
+// The good stuff
 const mattermostPlugin: Plugin = {
   name: "mattermost",
-  description: "Mattermost platform integration for ElizaOS with enhanced action ecosystem",
+  description: "Fully featured Mattermost client for elizaOS",
   services: [MattermostService],
   actions: mattermostActions, // All core actions: REPLY, IGNORE, UPDATE_CONTACT, CONTINUE, MATTERMOST_MESSAGE
   providers: [], // Context providers can be added later
@@ -25,5 +25,5 @@ elizaLogger.info('Mattermost plugin configured', {
     actionNames: mattermostPlugin.actions.map(action => action.name)
 });
 
-// Export the plugin object directly (not as a function) - following newer ElizaOS pattern
+// Export the plugin object directly
 export default mattermostPlugin; 

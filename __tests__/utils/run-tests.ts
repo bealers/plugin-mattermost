@@ -50,6 +50,26 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     // State composition method (used in new implementation)
     composeState: vi.fn().mockResolvedValue('Composed AI response from mock runtime'),
 
+    // Room management methods
+    ensureRoomExists: vi.fn().mockResolvedValue({
+      id: 'mock-room-id' as UUID,
+      name: 'Mock Room',
+      source: 'mattermost',
+      type: 'DM',
+    }),
+
+    // Actions array (required for action processing loop)
+    actions: [
+      {
+        name: 'MOCK_ACTION',
+        validate: vi.fn().mockResolvedValue(false), // Default to false so it doesn't interfere
+        handler: vi.fn().mockResolvedValue(undefined),
+        description: 'Mock action for testing',
+        examples: [],
+        similes: []
+      }
+    ],
+
     // Additional methods used in tests
     init: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -66,20 +86,37 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
  * @returns A mock config object
  */
 export function createMockConfig(overrides: Partial<MattermostConfig> = {}): MattermostConfig {
+  const defaultConfig: MattermostConfig = {
+    env: {
+      MATTERMOST_URL: 'https://test.mattermost.com',
+      MATTERMOST_TOKEN: 'test-token',
+      MATTERMOST_TEAM: 'test-team',
+      MATTERMOST_BOT_USERNAME: 'test-bot',
+      MATTERMOST_TEST_CHANNEL: 'eliza-testing',
+      LOG_LEVEL: 'info' as const,
+      MATTERMOST_WS_PING_INTERVAL: 30000,
+      MATTERMOST_RATE_LIMIT_PER_MINUTE: 60,
+    },
+    runtime: {
+      reconnectAttempts: 3,
+      reconnectDelay: 5000,
+      maxMessageLength: 4000,
+      allowedChannelTypes: ['O', 'P', 'D'] as const,
+    },
+  };
+
   return {
-    serverUrl: 'https://test.mattermost.com',
-    token: 'test-token',
-    teamName: 'test-team',
-    botUsername: 'test-bot',
-    channels: ['general'],
-    enableDirectMessages: true,
-    enableChannelMessages: true,
-    enableThreading: true,
-    apiVersion: 'v4',
-    connectionTimeout: 30000,
-    messageRetryAttempts: 3,
+    ...defaultConfig,
     ...overrides,
-  } as MattermostConfig;
+    env: {
+      ...defaultConfig.env,
+      ...overrides.env,
+    },
+    runtime: {
+      ...defaultConfig.runtime,
+      ...overrides.runtime,
+    },
+  };
 }
 
 /**
@@ -275,6 +312,14 @@ export interface MockRuntime {
   getSetting: ReturnType<typeof vi.fn>;
   useModel: ReturnType<typeof vi.fn>;
   init: ReturnType<typeof vi.fn>;
+  actions: {
+    name: string;
+    validate: ReturnType<typeof vi.fn>;
+    handler: ReturnType<typeof vi.fn>;
+    description: string;
+    examples: string[];
+    similes: string[];
+  }[];
   [key: string]: unknown;
 }
 

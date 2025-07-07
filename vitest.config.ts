@@ -16,6 +16,27 @@ export default defineConfig({
     globals: true,
     testTimeout: 60000,
     exclude: ['**/e2e/**', '**/node_modules/**', '**/.bealers/**'],
+    setupFiles: ['__tests__/utils/test-setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov', 'html'],
+      exclude: [
+        'node_modules/**',
+        '__tests__/**',
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        '**/types/**',
+        '**/*.d.ts',
+      ],
+      thresholds: {
+        global: {
+          statements: 80,
+          branches: 75,
+          functions: 80,
+          lines: 80,
+        },
+      },
+    },
   },
   resolve: {
     alias: {

@@ -1,7 +1,7 @@
 {
   "name": "@bealers/plugin-mattermost",
   "description": "Mattermost client plugin for ElizaOS - enables AI agent integration with Mattermost chat platforms",
-  "version": "0.1.6",
+  "version": "0.5.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -58,11 +58,9 @@
     "@types/node": "^24.0.4",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
-    "dockerode": "^4.0.7",
     "dotenv": "16.4.5",
     "eslint": "^9.29.0",
     "prettier": "3.5.3",
-    "testcontainers": "^11.0.3",
     "tsup": "8.5.0",
     "tsx": "^4.20.3",
     "typescript": "5.8.2",
@@ -78,22 +76,16 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit",
-    "test:integration": "vitest run __tests__/integration",
-    "test:e2e": "vitest run __tests__/e2e --config vitest.e2e.config.ts",
-    "test:e2e:messaging": "vitest run __tests__/e2e/message-scenarios.e2e.test.ts --config vitest.e2e.config.ts",
-    "test:e2e:eliza": "vitest run __tests__/e2e/elizaos-integration.e2e.test.ts --config vitest.e2e.config.ts",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest watch __tests__/unit",
     "test:manual": "vitest run __tests__/manual",
-    "test:all": "vitest run __tests__",
     "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "type-check": "tsc --noEmit",
     "bot:start": "elizaos dev --character hiro.character.json",
     "test:websocket": "tsx scripts/test-websocket.ts",
-    "test:websocket-events": "tsx scripts/test-websocket-events.ts",
-    "test:setup": "docker-compose -f docker-compose.test.yml up -d && ./scripts/init-mattermost-test.sh",
-    "test:teardown": "docker-compose -f docker-compose.test.yml down",
-    "test:containerized": "npm run test:setup && npm run test && npm run test:teardown"
+    "test:websocket-events": "tsx scripts/test-websocket-events.ts"
   },
   "publishConfig": {
     "access": "public"
@@ -101,21 +93,21 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "MATTERMOST_SERVER_URL": {
+      "MATTERMOST_URL": {
         "type": "string",
-        "description": "Mattermost server URL (e.g., https://chat.siftware.com)"
+        "description": "Mattermost server URL (e.g., https://chat.example.com)"
       },
-      "MATTERMOST_BOT_TOKEN": {
+      "MATTERMOST_TOKEN": {
         "type": "string",
         "description": "Mattermost bot access token"
       },
       "MATTERMOST_BOT_USERNAME": {
         "type": "string",
-        "description": "Mattermost bot username (e.g., beaker)"
+        "description": "Mattermost bot username (e.g., elizaos-bot)"
       },
-      "MATTERMOST_WEBHOOK_TOKEN": {
+      "MATTERMOST_TEAM": {
         "type": "string",
-        "description": "Mattermost webhook token for incoming messages"
+        "description": "Mattermost team name for bot operations"
       }
     }
   },

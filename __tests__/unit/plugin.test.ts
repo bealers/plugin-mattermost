@@ -56,9 +56,9 @@ describe('Plugin Structure', () => {
     expect(mattermostPlugin.services[0]).toBe(MattermostService);
   });
 
-  it('should have a clean, minimal plugin structure', () => {
+  it('should have a complete plugin structure', () => {
     const pluginKeys = Object.keys(mattermostPlugin);
-    expect(pluginKeys).toEqual(['name', 'services']);
+    expect(pluginKeys).toEqual(['name', 'description', 'services', 'actions', 'providers', 'evaluators']);
   });
 });
 

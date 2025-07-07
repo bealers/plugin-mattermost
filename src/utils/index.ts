@@ -2,7 +2,5 @@
  * Helper utilities for Mattermost integration
  */
 
-// TODO: Export utility functions
-// Example: message formatting, error handling, validation, etc. 
-
+// Production exports - error handling utilities available
 export * from './error-handler'; 

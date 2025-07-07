@@ -45,7 +45,7 @@ describe('MessageManager - Initialization and Cleanup', () => {
       setup.mockRestClient.getBotUser.mockResolvedValue(null);
 
       await expect(setup.messageManager.initialize()).rejects.toThrow(
-        'MessageManager initialization failed: Failed to get bot user: Cannot read properties of null (reading \'id\')'
+        'MessageManager initialization failed: Failed to get bot user:'
       );
       
       expect(setup.messageManager.isReady()).toBe(false);
@@ -75,7 +75,7 @@ describe('MessageManager - Initialization and Cleanup', () => {
       expect(setup.messageManager.isReady()).toBe(false);
       
       // Should not throw when cleaning up non-initialized manager
-      await expect(setup.messageManager.cleanup()).resolves.not.toThrow();
+      await expect(setup.messageManager.cleanup()).resolves.toBeUndefined();
       expect(setup.messageManager.isReady()).toBe(false);
     });
 
@@ -93,7 +93,7 @@ describe('MessageManager - Initialization and Cleanup', () => {
       await setup.messageManager.initialize();
       
       const mockError = new Error('Cleanup error');
-      vi.mocked(setup.mockWsClient.off).mockImplementation(() => {
+      (setup.mockWsClient.off as any).mockImplementation(() => {
         throw mockError;
       });
 

@@ -8,7 +8,8 @@ import { ignoreAction } from './ignore';
 import { updateContactAction } from './update-contact';
 import { continueAction } from './continue';
 
-// Legacy action - keeping for backward compatibility but using cleaner implementation
+
+// CHECK-ME: Legacy action - keeping for backward compatibility but using cleaner implementation
 import { mattermostMessageAction } from './message-response';
 
 // Re-export individual actions

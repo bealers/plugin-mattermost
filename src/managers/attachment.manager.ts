@@ -114,7 +114,7 @@ export class AttachmentManager {
           size: fileInfo.size
         });
         
-        // TODO: Emit file received event for ElizaOS processing when available
+        // TODO-NEXT: Emit file received event for elizaOS processing
         // this.runtime.emit('FILE_RECEIVED', {
         //   id: fileId,
         //   name: fileInfo.name,
@@ -197,7 +197,7 @@ export class AttachmentManager {
     await this.restClient.createPost(
       channelId,
       `I've received your image: **${fileInfo.name}**\n\n` +
-      `📄 **File Details:**\n` +
+      `**File Details:**\n` +
       `• Size: ${this.formatFileSize(fileInfo.size)}\n` +
       `• Type: ${fileInfo.mime_type}\n\n` +
       `*This is a placeholder for image analysis. Future versions will include AI-powered image understanding.*`,
@@ -220,7 +220,7 @@ export class AttachmentManager {
     await this.restClient.createPost(
       channelId,
       `I've received your PDF: **${fileInfo.name}**\n\n` +
-      `📄 **File Details:**\n` +
+      `**File Details:**\n` +
       `• Size: ${this.formatFileSize(fileInfo.size)}\n` +
       `• Type: PDF Document\n\n` +
       `*This is a placeholder for PDF analysis. Future versions will include text extraction and document understanding.*`,
@@ -243,7 +243,7 @@ export class AttachmentManager {
     await this.restClient.createPost(
       channelId,
       `I've received your Office document: **${fileInfo.name}**\n\n` +
-      `📄 **File Details:**\n` +
+      `**File Details:**\n` +
       `• Size: ${this.formatFileSize(fileInfo.size)}\n` +
       `• Type: ${fileInfo.mime_type}\n\n` +
       `*This is a placeholder for Office document analysis. Future versions will include content extraction and document understanding.*`,
@@ -272,7 +272,7 @@ export class AttachmentManager {
       await this.restClient.createPost(
         channelId,
         `I've received your text file: **${fileInfo.name}**\n\n` +
-        `📄 **File Details:**\n` +
+        `**File Details:**\n` +
         `• Size: ${this.formatFileSize(fileInfo.size)}\n` +
         `• Lines: ${content.split('\n').length}\n` +
         `• Characters: ${content.length}\n\n` +
@@ -341,7 +341,7 @@ export class AttachmentManager {
       const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
       
       // Post message with file attachment
-      await this.restClient.createPost(channelId, `📄 Generated file: ${fileName}`, {
+      await this.restClient.createPost(channelId, `Generated file: ${fileName}`, {
         rootId: postId,
         fileIds: [fileId]
       });
@@ -411,7 +411,7 @@ export class AttachmentManager {
       const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
       
       // Post message with file attachment and summary
-      const summary = `📊 Generated CSV file: ${fileName}\n- ${data.length} rows\n- ${headers.length} columns: ${headers.join(', ')}`;
+      const summary = `Generated CSV file: ${fileName}\n- ${data.length} rows\n- ${headers.length} columns: ${headers.join(', ')}`;
       await this.restClient.createPost(channelId, summary, {
         rootId: postId,
         fileIds: [fileId]
@@ -460,7 +460,7 @@ export class AttachmentManager {
       const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
       
       // Post message with file attachment
-      const summary = `📝 Generated markdown report: **${title}**\nFile: ${fileName}`;
+      const summary = `Generated markdown report: **${title}**\nFile: ${fileName}`;
       await this.restClient.createPost(channelId, summary, {
         rootId: postId,
         fileIds: [fileId]
@@ -503,7 +503,7 @@ export class AttachmentManager {
       const fileId = await this.uploadFile(channelId, fileData, fileName, postId);
       
       // Post message with file attachment
-      const summary = `🔧 Generated JSON file: ${fileName}\nSize: ${this.formatFileSize(fileData.length)}`;
+      const summary = `Generated JSON file: ${fileName}\nSize: ${this.formatFileSize(fileData.length)}`;
       await this.restClient.createPost(channelId, summary, {
         rootId: postId,
         fileIds: [fileId]

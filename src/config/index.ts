@@ -16,8 +16,7 @@ import {
 
 /**
  * Configuration manager for Mattermost plugin
- * Following ElizaOS patterns for atomic operations and service integration
- */
+  */
 class ConfigManager {
   private state: ConfigState = {
     loaded: false,
@@ -26,7 +25,6 @@ class ConfigManager {
 
   /**
    * Load and validate configuration
-
    */
   public loadConfig(options: ConfigOptions = {}): MattermostConfig {
     try {
@@ -99,14 +97,14 @@ class ConfigManager {
           // Add helpful context for common fields
           if (field === 'MATTERMOST_TOKEN') {
             message += '\n  → Get this from your Mattermost System Console → Integrations → Bot Accounts';
-          } else if (field === 'MATTERMOST_SERVER_URL') {
+          } else if (field === 'MATTERMOST_URL') {
             message += '\n  → Example: https://chat.example.com (include https://)';
           }
           
           return message;
         });
         
-        const helpText = '\n\n💡 Quick fix: Create a .env file with:\nMATTERMOST_SERVER_URL=https://your-server.com\nMATTERMOST_TOKEN=your-bot-token';
+        const helpText = '\n\nQuick fix: Create a .env file with:\nMATTERMOST_URL=https://your-server.com\nMATTERMOST_TOKEN=your-bot-token';
         
         throw new Error(`Configuration Error:\n${errorMessages.join('\n')}${helpText}`);
       }
@@ -116,7 +114,6 @@ class ConfigManager {
 
   /**
    * Store sensitive credentials securely
-   * Following ElizaOS security patterns
    */
   private storeSensitiveCredentials(envConfig: EnvConfig): void {
     // Store the Mattermost token securely
@@ -132,7 +129,6 @@ class ConfigManager {
 
   /**
    * Handle configuration errors without exposing sensitive data
-   * Following ElizaOS security patterns
    */
   private handleConfigError(error: unknown): ConfigError {
     if (error instanceof z.ZodError) {

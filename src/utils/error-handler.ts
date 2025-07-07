@@ -190,19 +190,19 @@ export class ErrorHandler {
     
     switch (error.code) {
       case 'NETWORK_ERROR':
-        return `${prefix} I'm having trouble connecting to my services. Please try again in a moment! 🔌`;
+        return `${prefix} I'm having trouble connecting to my services. Please try again in a moment!`;
       case 'RATE_LIMIT_EXCEEDED':
-        return `${prefix} I'm getting a lot of requests right now. Please wait a moment and try again! ⏱️`;
+        return `${prefix} I'm getting a lot of requests right now. Please wait a moment and try again!`;
       case 'AI_MODEL_ERROR':
-        return `${prefix} my AI brain is having a temporary hiccup. Give me a moment to recover! 🤖`;
+        return `${prefix} my AI brain is having a temporary hiccup. Give me a moment to recover!`;
       case 'AUTHENTICATION_FAILED':
-        return `${prefix} I'm having authentication issues. My admin needs to check my credentials! 🔐`;
+        return `${prefix} I'm having authentication issues. My admin needs to check my credentials!`;
       case 'TIMEOUT_ERROR':
-        return `${prefix} that took too long to process. Please try asking in a simpler way! ⏰`;
+        return `${prefix} that took too long to process. Please try asking in a simpler way!`;
       case 'VALIDATION_ERROR':
-        return `${prefix} I didn't understand your message format. Could you rephrase that? 🤔`;
+        return `${prefix} I didn't understand your message format. Could you rephrase that?`;
       default:
-        return `${prefix} I encountered an unexpected issue. Please try again or contact support if this persists! 🔧`;
+        return `${prefix} I encountered an unexpected issue. Please try again or contact support if this persists!`;
     }
   }
 } 

@@ -1,38 +1,39 @@
 # Testing Guide
 
-This project uses a containerized testing approach so you don't have to hammer the server in functional testing.
+This plugin uses a comprehensive unit testing approach with modern testing infrastructure aligned with the monorepo patterns.
 
 ## Quick Start
 
 ```bash
-# Setup containerized test environment (once)
-npm run test:setup
+# Install dependencies
+npm install
 
-# Run tests against containers
-npm run test
+# Run all unit tests
+npm run test:unit
 
-# Cleanup when done
-npm run test:teardown
+# Run tests with coverage
+npm run test:coverage
 ```
 
-## How It Works
+## Test Structure
 
-1. **Containerized Mattermost**: Tests run against a Docker container (localhost:8066)
-2. **Automatic Configuration**: Test config is generated automatically 
-3. **Your .env Stays Safe**: No accidental .env munging
-4. **Dummy Data**: All test data is temporary and disposable
+- **`__tests__/unit/`** - Unit tests for all plugin components
+- **`__tests__/utils/`** - Test utilities, mocks, and shared setup
+- **`vitest.config.ts`** - Test configuration with coverage reporting
 
 ## Test Types
 
-- `npm run test` - All tests (unit + integration)
-- `npm run test:unit` - Unit tests only
-- `npm run test:integration` - Integration tests (requires container)
-- `npm run test:e2e` - End-to-end tests (requires container)
+- `npm run test:unit` - All unit tests
+- `npm run test:coverage` - Unit tests with coverage reporting (80% minimum threshold)
 
-## Test Environment
+## Test Infrastructure
 
-When you run `npm run test:setup`, it:
-- Starts Mattermost + PostgreSQL containers
-- Creates test team, channels, and bot account
-- Generates test configuration automatically
-- Your tests automatically use this configuration
+The test suite uses:
+- **Vitest** - Modern test runner with excellent TypeScript support
+- **Comprehensive Mocking** - Full elizaOS runtime and Mattermost API mocking
+- **Global Setup** - Standardised test environment and logger mocking
+- **Coverage Reporting** - Detailed coverage reports with configurable thresholds
+
+## Test Configuration
+
+Copy `test.env.example` to configure your test environment for local development testing.

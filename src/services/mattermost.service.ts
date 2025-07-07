@@ -20,11 +20,11 @@ export class MattermostService extends Service {
     capabilityDescription = 'Mattermost platform integration service with real-time messaging, error handling, and resilience';
 
     // Debug static properties
-    static {
-        console.log('🔍 [DEBUG] MattermostService class loaded');
-        console.log('🔍 [DEBUG] serviceType:', this.serviceType);
-        console.log('🔍 [DEBUG] Service base class:', !!Service);
-    }
+    // static {
+    //     console.log('[DEBUG] MattermostService class loaded');
+//     console.log('[DEBUG] serviceType:', this.serviceType);
+//     console.log('[DEBUG] Service base class:', !!Service);
+    // }
 
     private isConnected: boolean = false;
     private mattermostConfig?: MattermostConfig;
@@ -47,15 +47,9 @@ export class MattermostService extends Service {
 
     constructor(runtime?: IAgentRuntime) {
         super(runtime);
-        console.log('🔍 [DEBUG] MattermostService constructor called');
-        console.log('🔍 [DEBUG] Runtime provided:', !!runtime);
-        console.log('🔍 [DEBUG] Service type:', MattermostService.serviceType);
     }
 
     static async start(runtime: IAgentRuntime): Promise<MattermostService> {
-        console.log('🔍 [DEBUG] MattermostService.start() called');
-        console.log('🔍 [DEBUG] Runtime in start method:', !!runtime);
-        
         const safeLogger = createSafeLogger(elizaLogger);
         safeLogger.info('*** STARTING MATTERMOST SERVICE ***');
         
@@ -85,10 +79,10 @@ export class MattermostService extends Service {
             
             service.isConnected = true;
             safeLogger.info('*** MATTERMOST SERVICE STARTED SUCCESSFULLY ***');
-            safeLogger.info('🚀 Mattermost service is now ready for real-time interactions!');
-            safeLogger.info(`🤖 Bot user: ${service.botUser?.username}`);
-            safeLogger.info(`🏢 Team: ${service.team?.name}`);
-            safeLogger.info('📡 WebSocket connected, MessageManager active');
+            safeLogger.info('Mattermost service is now ready for real-time interactions!');
+            safeLogger.info(`Bot user: ${service.botUser?.username}`);
+            safeLogger.info(`Team: ${service.team?.name}`);
+            safeLogger.info('WebSocket connected, MessageManager active');
             
             return service;
         } catch (error) {
@@ -110,15 +104,15 @@ export class MattermostService extends Service {
             
             // Provide helpful guidance for common issues
             if (errorMessage.includes('MATTERMOST_TOKEN')) {
-                safeLogger.error('💡 Check your bot token is set correctly in .env file');
-            } else if (errorMessage.includes('MATTERMOST_SERVER_URL')) {
-                safeLogger.error('💡 Verify your server URL includes https:// and is accessible');
+                safeLogger.error('Check your bot token is set correctly in .env file');
+            } else if (errorMessage.includes('MATTERMOST_URL')) {
+                safeLogger.error('Verify your server URL includes https:// and is accessible');
             } else if (errorMessage.includes('Authentication failed')) {
-                safeLogger.error('💡 Bot token may be invalid or bot account disabled');
+                safeLogger.error('Bot token may be invalid or bot account disabled');
             } else if (errorMessage.includes('Team access failed')) {
-                safeLogger.error('💡 Bot may not have access to the specified team');
+                safeLogger.error('Bot may not have access to the specified team');
             } else if (errorMessage.includes('WebSocket')) {
-                safeLogger.error('💡 WebSocket connection failed - check network connectivity and server status');
+                safeLogger.error('WebSocket connection failed - check network connectivity and server status');
             }
             
             // Cleanup on failure
@@ -146,7 +140,7 @@ export class MattermostService extends Service {
             this.safeLogger.info('Initializing Mattermost service components...');
             
             // Initialize REST API client
-            this.safeLogger.info('📡 Initializing REST client...');
+            this.safeLogger.info('Initializing REST client...');
             this.restClient = new RestClient(this.mattermostConfig);
             await this.restClient.initialize();
             
@@ -154,7 +148,7 @@ export class MattermostService extends Service {
             this.botUser = await this.restClient.getBotUser();
             this.team = await this.restClient.getTeam();
             
-            this.safeLogger.info('✅ REST client initialized successfully', {
+            this.safeLogger.info('REST client initialized successfully', {
                 botId: this.botUser.id,
                 botUsername: this.botUser.username,
                 teamId: this.team.id,
@@ -162,7 +156,7 @@ export class MattermostService extends Service {
             });
 
             // Initialize WebSocket client
-            this.safeLogger.info('🔌 Initializing WebSocket client...');
+            this.safeLogger.info('Initializing WebSocket client...');
             this.wsClient = new WebSocketClient(this.mattermostConfig, this.runtime!);
             
             // Set up WebSocket error handling
@@ -179,27 +173,27 @@ export class MattermostService extends Service {
             });
 
             this.wsClient.on('reconnection_success', () => {
-                this.safeLogger.info('🔄 WebSocket reconnected successfully');
+                this.safeLogger.info('WebSocket reconnected successfully');
             });
 
             // Connect WebSocket
             await this.wsClient.connect();
-            this.safeLogger.info('✅ WebSocket client connected and authenticated');
+            this.safeLogger.info('WebSocket client connected and authenticated');
 
             // Initialize Channel Manager
-            this.safeLogger.info('📁 Initializing Channel Manager...');
+            this.safeLogger.info('Initializing Channel Manager...');
             this.channelManager = new ChannelManager(this.restClient, this.runtime!);
             await this.channelManager.initialize();
-            this.safeLogger.info('✅ Channel Manager initialized successfully');
+            this.safeLogger.info('Channel Manager initialized successfully');
 
             // Initialize Attachment Manager
-            this.safeLogger.info('📁 Initializing Attachment Manager...');
+            this.safeLogger.info('Initializing Attachment Manager...');
             this.attachmentManager = new AttachmentManager(this.restClient, this.runtime!);
             await this.attachmentManager.initialize();
-            this.safeLogger.info('✅ Attachment Manager initialized successfully');
+            this.safeLogger.info('Attachment Manager initialized successfully');
 
             // Initialize Message Manager (depends on ChannelManager and AttachmentManager)
-            this.safeLogger.info('💬 Initializing Message Manager...');
+            this.safeLogger.info('Initializing Message Manager...');
             this.messageManager = new MessageManager(
                 this.mattermostConfig,
                 this.runtime!,
@@ -209,9 +203,9 @@ export class MattermostService extends Service {
             );
             
             await this.messageManager.initialize();
-            this.safeLogger.info('✅ Message Manager initialized successfully');
+            this.safeLogger.info('Message Manager initialized successfully');
             
-            this.safeLogger.info('🎉 All components initialized successfully');
+            this.safeLogger.info('All components initialized successfully');
             
         } catch (error) {
             this.errorHandler.handleError(
@@ -252,7 +246,7 @@ export class MattermostService extends Service {
             }
         }, this.HEALTH_CHECK_INTERVAL);
 
-        this.safeLogger.info('🏥 Health monitoring started');
+        this.safeLogger.info('Health monitoring started');
     }
 
     /**
@@ -332,7 +326,7 @@ export class MattermostService extends Service {
         }
 
         try {
-            this.safeLogger.info(`📤 Sending message to channel ${channelId}`, { 
+            this.safeLogger.info(`Sending message to channel ${channelId}`, { 
                 contentLength: content.length,
                 isReply: !!options?.rootId 
             });
@@ -342,7 +336,7 @@ export class MattermostService extends Service {
                 fileIds: options?.fileIds
             });
             
-            this.safeLogger.info(`✅ Message sent successfully`, { 
+            this.safeLogger.info(`Message sent successfully`, { 
                 postId: post.id,
                 channelId 
             });
@@ -381,9 +375,9 @@ export class MattermostService extends Service {
             await this.restClient.joinChannel(channel.id);
             
             // Send a greeting message
-            await this.sendMessage(channel.id, `Hello everyone! 👋 I'm ${this.botUser?.username}, your new AI assistant. Type "help" to see what I can do!`);
+            await this.sendMessage(channel.id, `Hello everyone! I'm ${this.botUser?.username}, your new AI assistant. Type "help" to see what I can do!`);
             
-            this.safeLogger.info(`✅ Successfully joined channel: ${channelName}`, {
+            this.safeLogger.info(`Successfully joined channel: ${channelName}`, {
                 channelId: channel.id
             });
             
@@ -522,7 +516,7 @@ export class MattermostService extends Service {
      * Cleanup and stop the service
      */
     private async cleanup(): Promise<void> {
-        this.safeLogger.info('🧹 Cleaning up service components...');
+        this.safeLogger.info('Cleaning up service components...');
 
         // Stop health monitoring
         if (this.healthCheckInterval) {

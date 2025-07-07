@@ -298,25 +298,25 @@ export class MessageManager {
     
     switch (errorType) {
       case ErrorType.NETWORK_ERROR:
-        return `${prefix} I'm having trouble connecting to my AI services right now. Please try again in a moment! 🔌`;
+        return `${prefix} I'm having trouble connecting to my AI services right now. Please try again in a moment!`;
       
       case ErrorType.API_RATE_LIMIT:
-        return `${prefix} I'm getting a lot of requests right now. Please wait a moment and try again! ⏱️`;
+        return `${prefix} I'm getting a lot of requests right now. Please wait a moment and try again!`;
       
       case ErrorType.AI_MODEL_ERROR:
-        return `${prefix} my AI brain is having a temporary hiccup. Give me a moment to recover! 🤖`;
+        return `${prefix} my AI brain is having a temporary hiccup. Give me a moment to recover!`;
       
       case ErrorType.AUTHENTICATION_ERROR:
-        return `${prefix} I'm having authentication issues. My admin needs to check my credentials! 🔐`;
+        return `${prefix} I'm having authentication issues. My admin needs to check my credentials!`;
       
       case ErrorType.TIMEOUT_ERROR:
-        return `${prefix} that took too long to process. Please try asking in a simpler way! ⏰`;
+        return `${prefix} that took too long to process. Please try asking in a simpler way!`;
       
       case ErrorType.VALIDATION_ERROR:
-        return `${prefix} I didn't understand your message format. Could you rephrase that? 🤔`;
+        return `${prefix} I didn't understand your message format. Could you rephrase that?`;
       
       default:
-        return `${prefix} I encountered an unexpected issue. Please try again or contact support if this persists! 🔧`;
+        return `${prefix} I encountered an unexpected issue. Please try again or contact support if this persists!`;
     }
   }
 
@@ -712,7 +712,7 @@ export class MessageManager {
           entityId: entityId,
           agentId: agentId,
           roomId: roomId,
-          worldId: worldId, // ✅ FIXED: Add missing worldId field
+          worldId: worldId,
           content: {
             text: message,
             source: 'mattermost',
@@ -732,42 +732,155 @@ export class MessageManager {
         // Build context for AI response generation using ElizaOS composeState
         const composedState: State = await this.runtime.composeState(memory);
 
-        // Enhance state with conversation context
-        const enhancedContext = `${composedState.text || ''}\n\n${conversationContext}\n\n${this.getResponseTemplate(metadata)}`.trim();
+        // Preserve the existing character context and enhance it with conversation details
+        // Don't override the composed state - it contains essential character context
+        const characterContext = composedState.text || '';
+        const additionalContext = this.buildConversationContext(message, context, metadata);
+        
+        // Add conversation context to the existing character-aware state
+        const enhancedState: State = {
+          ...composedState,
+          text: characterContext ? `${characterContext}\n\n${additionalContext}` : additionalContext,
+          data: {
+            ...composedState.data,
+            conversationMetadata: {
+              isDirectMessage: metadata.isDirectMessage,
+              isMention: metadata.isMention,
+              isThreadReply: metadata.isThreadReply,
+              channelName: metadata.channelName,
+              senderName: metadata.senderName
+            }
+          }
+        };
 
-        // Generate response using ElizaOS action system instead of direct AI call
-        let actionResponse = '';
-        const actionCallback: HandlerCallback = async (content) => {
-          this.logger.debug('Action callback received', {
+        this.logger.debug('Enhanced state for action processing', {
+          hasCharacterContext: !!characterContext,
+          characterContextLength: characterContext.length,
+          hasConversationContext: !!additionalContext,
+          conversationContextLength: additionalContext.length,
+          finalStateLength: enhancedState.text?.length || 0
+        });
+
+        // Generate response with proper action support using ElizaOS
+        elizaLogger.info('[MATTERMOST-DEBUG] GENERATING RESPONSE WITH ACTION SUPPORT', {
+          messageId: memory.id,
+          hasMemory: !!memory,
+          stateLength: enhancedState.text?.length,
+          availableActions: this.runtime.actions?.map(a => a.name) || []
+        });
+
+        // Step 1: Generate LLM response with action instructions (from composed state)
+        const llmResponse = await this.runtime.useModel('TEXT_LARGE', {
+          prompt: enhancedState.text || 'Please respond naturally to the user message.',
+          max_tokens: 400,
+          temperature: 0.8
+        });
+
+        elizaLogger.info('[MATTERMOST-DEBUG] LLM RESPONSE RECEIVED', {
+          messageId: memory.id,
+          hasResponse: !!llmResponse,
+          responseLength: llmResponse?.length || 0,
+          responsePreview: llmResponse?.substring(0, 200)
+        });
+
+        // Step 2: Process message through ElizaOS action system
+        elizaLogger.info('[MATTERMOST-DEBUG] PROCESSING MESSAGE THROUGH ELIZAOS ACTIONS', {
+          messageId: memory.id,
+          hasMemory: !!memory,
+          availableActions: this.runtime.actions?.map(a => a.name) || []
+        });
+
+        // Let ElizaOS handle the message through its action system
+        // This will call action.validate() on all actions and execute appropriate handlers
+        let finalResponse = '';
+        let actionExecuted = false;
+
+        // Create callback to capture action responses
+        const actionCallback = async (content: any, files?: any) => {
+          elizaLogger.info('[MATTERMOST-DEBUG] ACTION CALLBACK RECEIVED', {
+            messageId: memory.id,
             hasText: !!content.text,
-            textLength: content.text?.length || 0
+            textLength: content.text?.length || 0,
+            hasActions: !!content.actions,
+            actions: content.actions
           });
           
           if (content.text) {
-            actionResponse = content.text;
+            finalResponse = content.text;
+            actionExecuted = true;
           }
+          
           return [];
         };
 
-        // Process through action system
-        await this.runtime.processActions(
-          memory,
-          [],
-          composedState,
-          actionCallback
-        );
+        // Process the message through ElizaOS action system
+        // This will trigger action.validate() calls and execute handlers
+        try {
+          elizaLogger.info('[MATTERMOST-DEBUG] CHECKING ACTIONS', {
+            messageId: memory.id,
+            stateLength: enhancedState.text?.length || 0,
+            actionCount: this.runtime.actions?.length || 0
+          });
 
-        // Use action response if available, otherwise fall back to clean response
-        let finalResponse = actionResponse;
-        
-        if (!finalResponse || finalResponse.trim().length === 0) {
-          this.logger.info('No action response generated, using clean fallback');
-          finalResponse = this.generateFallbackResponse(metadata);
+          // Check each action manually to see validation
+          for (const action of this.runtime.actions || []) {
+            elizaLogger.info('[MATTERMOST-DEBUG] CHECKING ACTION', {
+              actionName: action.name,
+              messageId: memory.id
+            });
+            
+            try {
+              const isValid = await action.validate(this.runtime, memory, enhancedState);
+              elizaLogger.info('[MATTERMOST-DEBUG] ACTION VALIDATION RESULT', {
+                actionName: action.name,
+                isValid,
+                messageId: memory.id
+              });
+              
+              if (isValid) {
+                elizaLogger.info('[MATTERMOST-DEBUG] EXECUTING ACTION', {
+                  actionName: action.name,
+                  messageId: memory.id
+                });
+                
+                const result = await action.handler(this.runtime, memory, enhancedState, {}, actionCallback);
+                elizaLogger.info('[MATTERMOST-DEBUG] ACTION EXECUTION RESULT', {
+                  actionName: action.name,
+                  result,
+                  messageId: memory.id
+                });
+                
+                if (result && finalResponse) {
+                  actionExecuted = true;
+                  break; // Stop after first successful action
+                }
+              }
+            } catch (error) {
+              elizaLogger.error('[MATTERMOST-DEBUG] ACTION ERROR', {
+                actionName: action.name,
+                error: error instanceof Error ? error.message : 'Unknown error',
+                messageId: memory.id
+              });
+            }
+          }
+
+        } catch (error) {
+          elizaLogger.error('[MATTERMOST-DEBUG] ELIZAOS ACTION PROCESSING ERROR', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            messageId: memory.id
+          });
         }
 
-        // Validate and return clean response
-        if (!finalResponse) {
-          return this.generateFallbackResponse(metadata);
+        elizaLogger.info('[MATTERMOST-DEBUG] ACTION PROCESSING COMPLETED', {
+          messageId: memory.id,
+          actionExecuted,
+          finalResponseLength: finalResponse.length,
+          finalResponsePreview: finalResponse.substring(0, 200)
+        });
+        
+        if (!actionExecuted || !finalResponse || finalResponse.trim().length === 0) {
+          this.logger.warn('No action response generated, using clean fallback');
+          finalResponse = this.generateFallbackResponse(metadata);
         }
 
         return finalResponse;
@@ -941,18 +1054,18 @@ export class MessageManager {
     // User-friendly responses based on context
     const responses = {
       // Error responses with codes (for support debugging)
-      'AI_TIMEOUT': "I'm taking a bit longer to respond than usual. Please try again in a moment! ⏱️",
-      'ACTION_SYSTEM_ERROR': "I encountered an issue processing your message. Please try rephrasing it! 🔄", 
-      'PROVIDER_ERROR': "I'm having trouble accessing some context right now. Please try again! 📡",
-      'DATABASE_ERROR': "I'm experiencing some technical difficulties. Please try again shortly! 🔧",
-      'VALIDATION_ERROR': "I didn't quite understand that request. Could you try asking differently? 🤔",
+      'AI_TIMEOUT': "I'm taking a bit longer to respond than usual. Please try again in a moment!",
+      'ACTION_SYSTEM_ERROR': "I encountered an issue processing your message. Please try rephrasing it!", 
+      'PROVIDER_ERROR': "I'm having trouble accessing some context right now. Please try again!",
+      'DATABASE_ERROR': "I'm experiencing some technical difficulties. Please try again shortly!",
+      'VALIDATION_ERROR': "I didn't quite understand that request. Could you try asking differently?",
       
       // Context-aware fallbacks
       'DEFAULT_DM': metadata.senderName 
-        ? `Hi ${metadata.senderName}! I'm here to help. What can I assist you with today? 😊`
-        : "Hello! I'm here to help. What can I assist you with? 😊",
-      'DEFAULT_CHANNEL': `Hi there! I'm here to help in ${metadata.channelName}. What can I do for you? 👋`,
-      'DEFAULT_GENERIC': "I'm here and ready to help! What would you like to know? ✨"
+        ? `Hi ${metadata.senderName}! I'm here to help. What can I assist you with today?`
+        : "Hello! I'm here to help. What can I assist you with?",
+      'DEFAULT_CHANNEL': `Hi there! I'm here to help in ${metadata.channelName}. What can I do for you?`,
+      'DEFAULT_GENERIC': "I'm here and ready to help! What would you like to know?"
     };
 
     // Return appropriate response
@@ -1014,7 +1127,7 @@ export class MessageManager {
     // Send processing message
     await this.restClient.createPost(
       channelId,
-      `🔄 Processing your file generation request...`,
+      `Processing your file generation request...`,
       { rootId }
     );
 
@@ -1563,7 +1676,7 @@ END OF FILE`;
             { error: aiResult.error }
           );
         } else {
-          userMessage = "I'm temporarily unavailable. Please try again later! 🤖";
+          userMessage = "I'm temporarily unavailable. Please try again later!";
         }
 
         try {
@@ -1680,8 +1793,7 @@ END OF FILE`;
         eventData: data
       });
 
-      // TODO: Add edited message handling logic in future iterations
-      // For now, we'll skip processing edited messages to avoid complexity
+      // TODO: Implement post_edited event handling
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1702,7 +1814,7 @@ END OF FILE`;
         eventData: data
       });
 
-      // TODO: Add channel context handling logic in future subtasks
+      // TODO: Implement channel_viewed event handling
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

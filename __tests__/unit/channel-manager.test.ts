@@ -1,15 +1,16 @@
-import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChannelManager } from '../../src/managers/channel.manager';
 import { RestClient } from '../../src/clients/rest.client';
 import { IAgentRuntime } from '@elizaos/core';
+import { expectLoggerCalled } from '../utils/test-setup';
 
 // Mock the RestClient
 vi.mock('../../src/clients/rest.client');
 
 describe('ChannelManager', () => {
   let channelManager: ChannelManager;
-  let mockRestClient: jest.Mocked<RestClient>;
-  let mockRuntime: jest.Mocked<IAgentRuntime>;
+  let mockRestClient: Partial<RestClient>;
+  let mockRuntime: Partial<IAgentRuntime>;
 
   const mockBotUser = {
     id: 'bot-user-id',
@@ -52,15 +53,8 @@ describe('ChannelManager', () => {
     // Reset all mocks
     vi.clearAllMocks();
 
-    // Create mock runtime
-    mockRuntime = {
-      logger: {
-        info: vi.fn(),
-        debug: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn()
-      }
-    } as any;
+    // Create mock runtime (minimal, no logger needed now)
+    mockRuntime = {} as any;
 
     // Create mock REST client
     mockRestClient = {
@@ -84,9 +78,7 @@ describe('ChannelManager', () => {
       expect(mockRestClient.getBotUser).toHaveBeenCalledOnce();
       expect(mockRestClient.getTeam).toHaveBeenCalledOnce();
       expect(mockRestClient.getChannelsForUser).toHaveBeenCalledWith(mockBotUser.id, mockTeam.id);
-      expect(mockRuntime.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Channel manager initialized with 4 joined channels')
-      );
+      expectLoggerCalled('info', 'Channel manager initialized with 4 joined channels');
       expect(channelManager.initialized).toBe(true);
     });
 
@@ -95,10 +87,7 @@ describe('ChannelManager', () => {
       mockRestClient.getBotUser.mockRejectedValue(error);
 
       await expect(channelManager.initialize()).rejects.toThrow('Channel manager initialization failed: API Error');
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Failed to initialize channel manager', 
-        expect.objectContaining({ message: 'API Error' })
-      );
+      expectLoggerCalled('error', 'API Error');
       expect(channelManager.initialized).toBe(false);
     });
 
@@ -129,9 +118,7 @@ describe('ChannelManager', () => {
       expect(mockRestClient.getChannel).toHaveBeenCalledWith('new-channel');
       expect(mockRestClient.joinChannel).toHaveBeenCalledWith('new-channel');
       expect(channelManager.isJoined('new-channel')).toBe(true);
-      expect(mockRuntime.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Joined channel: New Public (new-channel)')
-      );
+      expectLoggerCalled('info', 'Joined channel: New Public (new-channel)');
     });
 
     it('should join a private channel successfully', async () => {
@@ -156,9 +143,7 @@ describe('ChannelManager', () => {
       expect(mockRestClient.getChannel).toHaveBeenCalledWith('new-dm');
       expect(mockRestClient.joinChannel).not.toHaveBeenCalled();
       expect(channelManager.isJoined('new-dm')).toBe(true);
-      expect(mockRuntime.logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Added direct/group channel to tracking: new-dm')
-      );
+      expectLoggerCalled('debug', 'Added direct/group channel to tracking: new-dm');
     });
 
     it('should handle group message channels without API call', async () => {
@@ -178,9 +163,7 @@ describe('ChannelManager', () => {
       expect(result).toBe(true);
       expect(mockRestClient.getChannel).not.toHaveBeenCalled();
       expect(mockRestClient.joinChannel).not.toHaveBeenCalled();
-      expect(mockRuntime.logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Already joined channel: channel-1')
-      );
+      expectLoggerCalled('debug', 'Already joined channel: channel-1');
     });
 
     it('should handle join errors gracefully', async () => {
@@ -190,10 +173,7 @@ describe('ChannelManager', () => {
       const result = await channelManager.joinChannel('error-channel');
 
       expect(result).toBe(false);
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error joining channel error-channel',
-        expect.objectContaining({ message: 'Join failed' })
-      );
+              expectLoggerCalled('error', 'Join failed');
       expect(channelManager.isJoined('error-channel')).toBe(false);
     });
 
@@ -203,10 +183,7 @@ describe('ChannelManager', () => {
       const result = await uninitializedManager.joinChannel('test-channel');
       
       expect(result).toBe(false);
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error joining channel test-channel',
-        expect.objectContaining({ message: 'Channel manager not initialized' })
-      );
+              expectLoggerCalled('error', 'Channel manager not initialized');
     });
   });
 
@@ -235,10 +212,7 @@ describe('ChannelManager', () => {
       const result = await channelManager.joinChannelByName('nonexistent');
 
       expect(result).toBe(false);
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error joining channel by name nonexistent',
-        expect.objectContaining({ message: 'Channel not found' })
-      );
+              expectLoggerCalled('error', 'Channel not found');
     });
 
     it('should throw error if not initialized', async () => {
@@ -247,10 +221,7 @@ describe('ChannelManager', () => {
       const result = await uninitializedManager.joinChannelByName('test-channel');
       
       expect(result).toBe(false);
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error joining channel by name test-channel',
-        expect.objectContaining({ message: 'Channel manager not initialized' })
-      );
+              expectLoggerCalled('error', 'Channel manager not initialized');
     });
   });
 
@@ -270,9 +241,7 @@ describe('ChannelManager', () => {
       expect(mockRestClient.getChannel).toHaveBeenCalledWith('channel-1');
       expect(mockRestClient.leaveChannel).toHaveBeenCalledWith('channel-1');
       expect(channelManager.isJoined('channel-1')).toBe(false);
-      expect(mockRuntime.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Left channel: Public Channel (channel-1)')
-      );
+      expectLoggerCalled('info', 'Left channel: Public Channel (channel-1)');
     });
 
     it('should handle direct message channels without API call', async () => {
@@ -284,9 +253,7 @@ describe('ChannelManager', () => {
       expect(result).toBe(true);
       expect(mockRestClient.leaveChannel).not.toHaveBeenCalled();
       expect(channelManager.isJoined('channel-3')).toBe(false);
-      expect(mockRuntime.logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Removed direct/group channel from tracking: channel-3')
-      );
+      expectLoggerCalled('debug', 'Removed direct/group channel from tracking: channel-3');
     });
 
     it('should handle group message channels without API call', async () => {
@@ -306,9 +273,7 @@ describe('ChannelManager', () => {
       expect(result).toBe(true);
       expect(mockRestClient.getChannel).not.toHaveBeenCalled();
       expect(mockRestClient.leaveChannel).not.toHaveBeenCalled();
-      expect(mockRuntime.logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Not joined to channel: unknown-channel')
-      );
+      expectLoggerCalled('debug', 'Not joined to channel: unknown-channel');
     });
 
     it('should handle leave errors gracefully', async () => {
@@ -318,10 +283,7 @@ describe('ChannelManager', () => {
       const result = await channelManager.leaveChannel('channel-1');
 
       expect(result).toBe(false);
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error leaving channel channel-1',
-        expect.objectContaining({ message: 'Leave failed' })
-      );
+              expectLoggerCalled('error', 'Leave failed');
     });
 
     it('should throw error if not initialized', async () => {
@@ -330,10 +292,7 @@ describe('ChannelManager', () => {
       const result = await uninitializedManager.leaveChannel('test-channel');
       
       expect(result).toBe(false);
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error leaving channel test-channel',
-        expect.objectContaining({ message: 'Channel manager not initialized' })
-      );
+              expectLoggerCalled('error', 'Channel manager not initialized');
     });
   });
 
@@ -357,9 +316,7 @@ describe('ChannelManager', () => {
 
       expect(result).toBe(true);
       expect(mockRestClient.getChannel).toHaveBeenCalledWith('accessible-channel');
-      expect(mockRuntime.logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Validated access to channel: Accessible (accessible-channel)')
-      );
+      expectLoggerCalled('debug', 'Validated access to channel: Accessible (accessible-channel)');
     });
 
     it('should return false for inaccessible channels', async () => {
@@ -369,10 +326,7 @@ describe('ChannelManager', () => {
       const result = await channelManager.validateChannelAccess('inaccessible-channel');
 
       expect(result).toBe(false);
-      expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
-        'No access to channel inaccessible-channel',
-        { error: 'No access' }
-      );
+      expectLoggerCalled('warn', 'No access to channel inaccessible-channel');
     });
 
     it('should throw error if not initialized', async () => {
@@ -381,10 +335,7 @@ describe('ChannelManager', () => {
       const result = await uninitializedManager.validateChannelAccess('test-channel');
       
       expect(result).toBe(false);
-      expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
-        'No access to channel test-channel',
-        { error: 'Channel manager not initialized' }
-      );
+      expectLoggerCalled('warn', 'No access to channel test-channel');
     });
   });
 
@@ -410,10 +361,7 @@ describe('ChannelManager', () => {
       const result = await channelManager.getChannelType('error-channel');
 
       expect(result).toBe('unknown');
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error getting channel type for error-channel',
-        expect.objectContaining({ message: 'Channel not found' })
-      );
+              expectLoggerCalled('error', 'Channel not found');
     });
 
     it('should throw error if not initialized', async () => {
@@ -422,10 +370,7 @@ describe('ChannelManager', () => {
       const result = await uninitializedManager.getChannelType('test-channel');
       
       expect(result).toBe('unknown');
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error getting channel type for test-channel',
-        expect.objectContaining({ message: 'Channel manager not initialized' })
-      );
+              expectLoggerCalled('error', 'Channel manager not initialized');
     });
   });
 
@@ -477,9 +422,7 @@ describe('ChannelManager', () => {
       expect(channelManager.isJoined('channel-5')).toBe(true);
       expect(channelManager.isJoined('channel-2')).toBe(false); // Removed
       expect(channelManager.getJoinedChannelCount()).toBe(2);
-      expect(mockRuntime.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Refreshed channel memberships: 2 channels')
-      );
+      expectLoggerCalled('info', 'Refreshed channel memberships: 2 channels');
     });
 
     it('should handle refresh errors', async () => {
@@ -487,10 +430,7 @@ describe('ChannelManager', () => {
       mockRestClient.getChannelsForUser.mockRejectedValue(error);
 
       await expect(channelManager.refreshMemberships()).rejects.toThrow('API Error');
-      expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-        'Error refreshing channel memberships',
-        expect.objectContaining({ message: 'API Error' })
-      );
+              expectLoggerCalled('error', 'API Error');
     });
 
     it('should throw error if not properly initialized', async () => {
@@ -510,7 +450,7 @@ describe('ChannelManager', () => {
 
       expect(channelManager.initialized).toBe(false);
       expect(channelManager.getJoinedChannelCount()).toBe(0);
-      expect(mockRuntime.logger.info).toHaveBeenCalledWith('Channel manager cleaned up');
+      expectLoggerCalled('info', 'Channel manager cleaned up');
     });
   });
 }); 

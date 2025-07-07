@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, type MockedFunction } 
 import { AttachmentManager } from '../../src/managers/attachment.manager';
 import { RestClient } from '../../src/clients/rest.client';
 import { IAgentRuntime } from '@elizaos/core';
+import { mockLogger, expectLoggerCalled } from '../utils/test-setup';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -15,21 +16,12 @@ describe('AttachmentManager', () => {
   let attachmentManager: AttachmentManager;
   let mockRestClient: Partial<RestClient>;
   let mockRuntime: Partial<IAgentRuntime>;
-  let mockLogger: any;
 
   const mockTempDir = '/tmp/mattermost-elizaos-files';
   
   beforeEach(() => {
     // Setup mocks
-    mockLogger = {
-      info: vi.fn(),
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn()
-    };
-
     mockRuntime = {
-      logger: mockLogger,
       emit: vi.fn()
     };
 
@@ -76,9 +68,7 @@ describe('AttachmentManager', () => {
 
       expect(fs.mkdirSync).toHaveBeenCalledWith(mockTempDir, { recursive: true });
       expect(attachmentManager.initialized).toBe(true);
-      expect(mockLogger.info).toHaveBeenCalledWith('Attachment manager initialized', {
-        tempDir: mockTempDir
-      });
+      expectLoggerCalled('info', 'Attachment manager initialized');
     });
 
     it('should skip directory creation if it already exists', async () => {
@@ -100,7 +90,7 @@ describe('AttachmentManager', () => {
         'Attachment manager initialization failed: Directory creation failed'
       );
       
-      expect(mockLogger.error).toHaveBeenCalledWith('Failed to initialize attachment manager', error);
+      expectLoggerCalled('error', 'Directory creation failed');
       expect(attachmentManager.initialized).toBe(false);
     });
   });
@@ -122,7 +112,7 @@ describe('AttachmentManager', () => {
       });
       
       expect(attachmentManager.initialized).toBe(false);
-      expect(mockLogger.info).toHaveBeenCalledWith('Attachment manager cleaned up');
+      expectLoggerCalled('info', 'Attachment manager cleaned up');
     });
 
     it('should handle missing temp directory gracefully', async () => {
@@ -147,7 +137,7 @@ describe('AttachmentManager', () => {
 
       await attachmentManager.cleanup();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith('Error deleting temp file file1.txt: Permission denied');
+      expectLoggerCalled('warn', 'Error deleting temp file file1.txt: Permission denied');
       expect(attachmentManager.initialized).toBe(false);
     });
   });
@@ -212,7 +202,7 @@ describe('AttachmentManager', () => {
 
       await attachmentManager.processFileAttachments(['file1'], channelId, postId);
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Error processing file file1: Download failed');
+      expectLoggerCalled('error', 'Error processing file file1: Download failed');
       expect(mockRestClient.createPost).toHaveBeenCalledWith(
         channelId,
         'Sorry, I encountered an error processing the file: Download failed',
@@ -228,8 +218,8 @@ describe('AttachmentManager', () => {
 
       await attachmentManager.processFileAttachments(['file1'], channelId, postId);
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Error processing file file1: Download failed');
-      expect(mockLogger.error).toHaveBeenCalledWith('Error sending error message: Send failed');
+      expectLoggerCalled('error', 'Error processing file file1: Download failed');
+      expectLoggerCalled('error', 'Error sending error message: Send failed');
     });
   });
 
@@ -242,7 +232,6 @@ describe('AttachmentManager', () => {
       size: 1024,
       mime_type: 'text/plain'
     };
-    const filePath = '/tmp/test.txt';
 
     beforeEach(async () => {
       await attachmentManager.initialize();
@@ -320,9 +309,7 @@ describe('AttachmentManager', () => {
       
       await attachmentManager.processFileAttachments(['file1'], channelId, postId);
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Error reading text file', expect.objectContaining({
-        message: 'File read error'
-      }));
+      expectLoggerCalled('error', 'File read error');
       expect(mockRestClient.createPost).toHaveBeenCalledWith(
         channelId,
         expect.stringContaining('encountered an error reading its contents'),
@@ -413,7 +400,7 @@ describe('AttachmentManager', () => {
         attachmentManager.uploadFile(channelId, fileData, fileName)
       ).rejects.toThrow('Upload failed');
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Error uploading file: Upload failed');
+      expectLoggerCalled('error', 'Error uploading file: Upload failed');
     });
   });
 

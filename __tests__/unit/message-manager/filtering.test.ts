@@ -54,7 +54,7 @@ describe('MessageManager - Message Filtering', () => {
       mentions: JSON.stringify(['mock-bot-user-id'])
     };
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
+    const postedHandler = (setup.mockWsClient.on as any).mock.calls
       .find(call => call[0] === 'posted')?.[1];
     
     await postedHandler!(mentionMessage);
@@ -68,7 +68,7 @@ describe('MessageManager - Message Filtering', () => {
   it('should skip bot\'s own messages', async () => {
     const botMessage = testData.botMessage();
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
+    const postedHandler = (setup.mockWsClient.on as any).mock.calls
       .find(call => call[0] === 'posted')?.[1];
     
     await postedHandler!(botMessage);
@@ -103,7 +103,7 @@ describe('MessageManager - Message Filtering', () => {
       team_id: 'team-123'
     };
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
+    const postedHandler = (setup.mockWsClient.on as any).mock.calls
       .find(call => call[0] === 'posted')?.[1];
     
     await postedHandler!(publicMessage);
@@ -138,7 +138,7 @@ describe('MessageManager - Message Filtering', () => {
       team_id: 'team-123'
     };
 
-    const postedHandler = vi.mocked(setup.mockWsClient.on).mock.calls
+    const postedHandler = (setup.mockWsClient.on as any).mock.calls
       .find(call => call[0] === 'posted')?.[1];
     
     await postedHandler!(systemMessage);

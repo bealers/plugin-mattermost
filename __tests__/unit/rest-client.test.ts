@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { MattermostConfig } from '../../src/config';
-import { createMockConfig } from '../utils/test-utils';
+import { createMockConfig } from '../utils/run-tests';
 
 // Mock the entire RestClient module to prevent any real network calls
 const mockRestClient = {

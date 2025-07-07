@@ -3,7 +3,6 @@ import { elizaLogger } from '@elizaos/core';
 
 /**
  * CONTINUE action - Extends conversations with follow-up questions or elaboration
- * This action keeps conversations flowing naturally by showing interest and engagement
  */
 export const continueAction: Action = {
     name: "CONTINUE",
