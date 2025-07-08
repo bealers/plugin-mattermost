@@ -1,7 +1,7 @@
 {
   "name": "@bealers/plugin-mattermost",
   "description": "Mattermost client plugin for ElizaOS - enables AI agent integration with Mattermost chat platforms",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
